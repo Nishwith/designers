@@ -12,16 +12,31 @@ import {
   Clock,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { signOut } from "../services/authService";
+
+const CITY_OPTIONS = [
+  "Hyderabad",
+  "Bangalore",
+  "Mumbai",
+  "Delhi",
+  "Kolkata",
+  "Chennai",
+  "Other",
+];
 
 const UserProfile = () => {
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [user, setUser] = useState(null);
-  const [formData, setFormData] = useState({ fullName: "", phone: "" });
+  const [formData, setFormData] = useState({
+    fullName: "",
+    phone: "",
+    city: "",
+    customCity: "",
+  });
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -43,10 +58,14 @@ const UserProfile = () => {
         .single();
 
       if (profile) {
+        const existingCity = profile.city || "";
+        const isStandard = CITY_OPTIONS.includes(existingCity);
         setFormData({
           fullName:
             profile.full_name || session.user.user_metadata.full_name || "",
           phone: profile.phone || session.user.user_metadata.phone || "",
+          city: isStandard ? existingCity : (existingCity ? "Other" : ""),
+          customCity: !isStandard ? existingCity : "",
         });
       }
       setLoading(false);
@@ -62,6 +81,13 @@ const UserProfile = () => {
       toast.error("Please enter a valid phone number.");
       return;
     }
+
+    const finalCity = formData.city === "Other" ? formData.customCity.trim() : formData.city;
+    if (!finalCity || finalCity.trim() === "" || finalCity === "Select City" || finalCity === "Select a City") {
+      toast.error("Please select a valid city.");
+      return;
+    }
+
     setSaving(true);
     try {
       // 1. Update Auth Metadata (so session stays fresh)
@@ -76,9 +102,11 @@ const UserProfile = () => {
         .update({
           full_name: formData.fullName,
           phone: formData.phone,
+          city: finalCity,
         })
         .eq("id", user.id);
 
+      await queryClient.invalidateQueries({ queryKey: ["users"] });
       toast.success("Profile Updated!");
     } catch {
       toast.error("Update failed");
@@ -210,9 +238,57 @@ const UserProfile = () => {
                   onChange={(e) =>
                     setFormData({ ...formData, phone: e.target.value })
                   }
-                  placeholder="e.g. +91 98765 43210"
+                  placeholder="e.g. 98765 43210"
                 />
               </div>
+            </div>
+
+            {/* City Dropdown */}
+            <div>
+              <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">
+                City
+              </label>
+              <div className="relative group">
+                <select
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-gray-900 focus:border-brand-accent focus:ring-1 focus:ring-brand-accent outline-none transition-all appearance-none cursor-pointer"
+                  value={formData.city}
+                  onChange={(e) =>
+                    setFormData({ ...formData, city: e.target.value })
+                  }
+                >
+                  <option value="">Select City</option>
+                  {CITY_OPTIONS.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Custom City Field */}
+            {formData.city === "Other" && (
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">
+                  Custom City Name
+                </label>
+                <input
+                  type="text"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-gray-900 focus:border-brand-accent focus:ring-1 focus:ring-brand-accent outline-none transition-all placeholder-gray-600"
+                  value={formData.customCity}
+                  onChange={(e) =>
+                    setFormData({ ...formData, customCity: e.target.value })
+                  }
+                  placeholder="Enter custom city"
+                />
+              </div>
+            )}
+
+            {/* Change Password Button */}
+            <div className="pt-4 border-t border-gray-100 mt-6 mb-4">
+              <Link className="w-full bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 font-bold py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm" to="/update-password">
+                Change Password
+              </Link>
             </div>
 
             {/* Submit Button */}

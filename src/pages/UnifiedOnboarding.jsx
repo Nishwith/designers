@@ -130,8 +130,14 @@ const UnifiedOnboarding = () => {
 
       if (error) throw error;
 
-      // Update the user's profile_completed status so they don't get stuck in an onboarding loop
-      await supabase.from("users").update({ profile_completed: true }).eq('id', user.id);
+      if (user?.id) {
+        await supabase.from("users").update({
+          phone: formData.phone,
+          city: finalCity,
+          full_name: formData.orgName,
+          profile_completed: true,
+        }).eq("id", user.id);
+      }
 
       toast.success("Application Submitted! We will contact you soon.");
       window.location.href = "/waitlist";

@@ -168,14 +168,14 @@ const Login = () => {
 
               <div className="text-center text-sm text-gray-500">
                 Don't have an account?{" "}
-                <Link to="/onboarding" className="text-gray-900 hover:text-brand-accent font-bold transition-colors">Sign Up</Link>
+                <Link to="/register" className="text-gray-900 hover:text-brand-accent font-bold transition-colors">Sign Up</Link>
               </div>
 
               {/* Designer Callout */}
               <div className="bg-brand-accent/5 border border-brand-accent/10 rounded-xl p-3.5 text-center">
                 <p className="text-sm text-gray-600">
                   Are you an interior designer or architect?{" "}
-                  <Link to="/onboarding" className="text-brand-accent font-bold hover:underline">Join Marketplace</Link>
+                  <Link to="/register" className="text-brand-accent font-bold hover:underline">Join Marketplace</Link>
                 </p>
               </div>
             </form>

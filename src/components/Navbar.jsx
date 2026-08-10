@@ -33,7 +33,7 @@ const Navbar = () => {
       ? { text: "Admin Panel", path: "/admin", icon: <ShieldAlert size={18} /> }
       : role === "designer"
       ? { text: "Designer Dashboard", path: "/dashboard", icon: null }
-      : { text: "Designer? Join us", path: "/onboarding", icon: null };
+      : { text: "Designer? Join us", path: "/register", icon: null };
 
   return (
     <nav className="bg-white/95 backdrop-blur-lg border-b border-gray-200 fixed w-full z-[100] top-0 shadow-sm transition-all">
@@ -104,7 +104,7 @@ const Navbar = () => {
                   Log In
                 </Link>
                 <Link
-                  to="/onboarding"
+                  to="/register"
                   className="bg-brand-accent text-white px-5 py-2 rounded-xl font-bold hover:bg-orange-600 shadow-lg shadow-orange-500/20 transition-all active:scale-95"
                 >
                   Sign Up
@@ -180,7 +180,7 @@ const Navbar = () => {
                   Log In
                 </Link>
                 <Link
-                  to="/onboarding"
+                  to="/register"
                   onClick={() => setIsOpen(false)}
                   className="block text-center bg-brand-accent text-white font-bold px-4 py-2.5 rounded-xl hover:bg-orange-600 transition-all shadow-md"
                 >

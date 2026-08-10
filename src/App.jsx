@@ -6,6 +6,7 @@ import { Toaster } from "react-hot-toast";
 
 import React, { Suspense } from "react";
 import Login from "./pages/Login";
+import Register from "./pages/Register";
 import Connect from "./pages/Connect";
 import UserProfile from "./pages/UserProfile";
 import AboutContact from "./pages/AboutContact";
@@ -54,10 +55,10 @@ function App() {
           <Routes>
             {/* Guest / Public Landing Routes */}
             <Route element={<GuestRoute />}>
-              <Route path="/" element={<UnifiedOnboarding />} />
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="/login" element={<Login />} />
-              <Route path="/onboarding" element={<UnifiedOnboarding />} />
-              <Route path="/register" element={<Navigate to="/onboarding" replace />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/signup" element={<Navigate to="/register" replace />} />
             </Route>
 
             {/* Public Information */}

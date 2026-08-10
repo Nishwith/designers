@@ -53,7 +53,7 @@ const Footer = () => {
               <ul className="space-y-3">
                 <li>
                   <Link
-                    to="/"
+                    to="/register"
                     className="text-gray-500 hover:text-brand-accent font-medium text-sm transition-colors flex items-center gap-2 group"
                   >
                     <ArrowRight
@@ -98,7 +98,7 @@ const Footer = () => {
               <ul className="space-y-3">
                 <li>
                   <Link
-                    to="/collab"
+                    to="/register"
                     className="text-gray-500 hover:text-brand-accent font-medium text-sm transition-colors flex items-center gap-2 group"
                   >
                     <ArrowRight
