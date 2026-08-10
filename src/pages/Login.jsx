@@ -56,9 +56,9 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-[calc(100vh-80px)] w-full flex flex-col md:flex-row bg-white overflow-hidden animate-fade-in">
+    <div className="h-[calc(100vh-4rem)] md:h-[calc(100vh-5rem)] w-full flex flex-col md:flex-row bg-white overflow-hidden animate-fade-in">
       {/* Left side: Premium branding */}
-      <div className="hidden md:flex md:w-1/2 bg-slate-950 relative items-center justify-center p-16">
+      <div className="hidden md:flex md:w-1/2 h-full bg-slate-950 relative items-center justify-center p-16">
         <div className="absolute inset-0 bg-cover bg-center opacity-30 mix-blend-luminosity" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80')" }}></div>
         <div className="absolute inset-0 bg-gradient-to-tr from-brand-accent/20 to-slate-950/90"></div>
         <div className="relative z-10 max-w-md text-white space-y-8">
@@ -80,22 +80,22 @@ const Login = () => {
       </div>
 
       {/* Right side: Borderless form */}
-      <div className="w-full md:w-1/2 flex items-center justify-center p-8 md:p-20 lg:p-28 bg-white">
-        <div className="w-full max-w-lg space-y-12 animate-slide-up">
-          <div className="space-y-4">
-            <h2 className="text-5xl font-bold text-gray-900 tracking-tight font-heading">
+      <div className="w-full md:w-1/2 h-full overflow-y-auto flex flex-col px-6 md:px-12 xl:px-20 bg-white scrollbar-hide">
+        <div className="m-auto w-full max-w-md space-y-6 animate-slide-up">
+          <div className="space-y-2">
+            <h2 className="text-4xl font-bold text-gray-900 tracking-tight font-heading">
               {isResetMode ? "Reset Password" : "Sign In"}
             </h2>
-            <p className="text-gray-500 font-sans font-light text-lg">
+            <p className="text-gray-500 font-sans font-light text-base">
               {isResetMode ? "Enter your email to receive a reset link" : "Access your personalized workspace"}
             </p>
           </div>
 
           {/* Google Sign In */}
           {!isResetMode && (
-            <div className="space-y-6">
+            <div className="space-y-4">
               <GoogleSignInButton label="Sign in with Google" />
-              <div className="relative flex py-2 items-center">
+              <div className="relative flex py-1 items-center">
                 <div className="flex-grow border-t border-gray-100"></div>
                 <span className="flex-shrink mx-4 text-gray-400 text-xs font-bold uppercase tracking-wider">or continue with email</span>
                 <div className="flex-grow border-t border-gray-100"></div>
@@ -104,19 +104,19 @@ const Login = () => {
           )}
 
           {isResetMode ? (
-            <form onSubmit={handleResetPassword} className="space-y-10">
-              <div className="group relative border-b border-gray-100 focus-within:border-brand-accent transition-all duration-500 py-2">
+            <form onSubmit={handleResetPassword} className="space-y-6">
+              <div className="group relative border-b border-gray-100 focus-within:border-brand-accent transition-all duration-500 py-1.5">
                 <label className="text-xs font-bold text-gray-400 tracking-widest uppercase block mb-1">Email Address</label>
                 <div className="flex items-center">
                   <Mail className="h-5 w-5 text-gray-300 group-focus-within:text-brand-accent transition-colors duration-500 mr-3" />
                   <input type="email" name="email" value={formData.email} onChange={handleChange}
-                    className="block w-full py-2 bg-transparent text-gray-900 placeholder-gray-300 text-lg font-sans border-none outline-none focus:ring-0"
+                    className="block w-full py-1.5 bg-transparent text-gray-900 placeholder-gray-300 text-base font-sans border-none outline-none focus:ring-0"
                     placeholder="name@example.com" required />
                 </div>
               </div>
-              <div className="pt-4">
+              <div className="pt-2">
                 <button disabled={loading}
-                  className="group relative w-full py-5 bg-gray-900 hover:bg-brand-accent text-white font-bold rounded-2xl transition-all duration-500 flex items-center justify-center gap-3 cursor-pointer shadow-xl shadow-slate-900/5 hover:shadow-brand-accent/25 hover:-translate-y-0.5 disabled:opacity-75">
+                  className="group relative w-full py-4 bg-gray-900 hover:bg-brand-accent text-white font-bold rounded-2xl transition-all duration-500 flex items-center justify-center gap-3 cursor-pointer shadow-xl shadow-slate-900/5 hover:shadow-brand-accent/25 hover:-translate-y-0.5 disabled:opacity-75">
                   {loading ? <Loader2 className="animate-spin h-5 w-5" /> : "Send Reset Link"}
                 </button>
               </div>
@@ -126,21 +126,21 @@ const Login = () => {
               </button>
             </form>
           ) : (
-            <form onSubmit={handleLogin} className="space-y-10">
-              <div className="space-y-8">
+            <form onSubmit={handleLogin} className="space-y-6">
+              <div className="space-y-5">
                 {/* Email */}
-                <div className="group relative border-b border-gray-100 focus-within:border-brand-accent transition-all duration-500 py-2">
+                <div className="group relative border-b border-gray-100 focus-within:border-brand-accent transition-all duration-500 py-1.5">
                   <label className="text-xs font-bold text-gray-400 tracking-widest uppercase block mb-1">Email Address</label>
                   <div className="flex items-center">
                     <Mail className="h-5 w-5 text-gray-300 group-focus-within:text-brand-accent transition-colors duration-500 mr-3" />
                     <input type="email" name="email" value={formData.email} onChange={handleChange}
-                      className="block w-full py-2 bg-transparent text-gray-900 placeholder-gray-300 text-lg font-sans border-none outline-none focus:ring-0"
+                      className="block w-full py-1.5 bg-transparent text-gray-900 placeholder-gray-300 text-base font-sans border-none outline-none focus:ring-0"
                       placeholder="name@example.com" required />
                   </div>
                 </div>
 
                 {/* Password */}
-                <div className="group relative border-b border-gray-100 focus-within:border-brand-accent transition-all duration-500 py-2">
+                <div className="group relative border-b border-gray-100 focus-within:border-brand-accent transition-all duration-500 py-1.5">
                   <div className="flex justify-between items-center mb-1">
                     <label className="text-xs font-bold text-gray-400 tracking-widest uppercase">Password</label>
                     <button type="button" onClick={() => setIsResetMode(true)}
@@ -149,7 +149,7 @@ const Login = () => {
                   <div className="flex items-center">
                     <Lock className="h-5 w-5 text-gray-300 group-focus-within:text-brand-accent transition-colors duration-500 mr-3" />
                     <input type={showPassword ? "text" : "password"} name="password" value={formData.password} onChange={handleChange}
-                      className="block w-full py-2 bg-transparent text-gray-900 placeholder-gray-300 text-lg font-sans border-none outline-none focus:ring-0"
+                      className="block w-full py-1.5 bg-transparent text-gray-900 placeholder-gray-300 text-base font-sans border-none outline-none focus:ring-0"
                       placeholder="••••••••" required />
                     <button type="button" onClick={() => setShowPassword(!showPassword)}
                       className="text-gray-400 hover:text-gray-900 transition-colors ml-2">
@@ -159,16 +159,24 @@ const Login = () => {
                 </div>
               </div>
 
-              <div className="pt-4">
+              <div className="pt-2">
                 <button disabled={loading}
-                  className="group relative w-full py-5 bg-gray-900 hover:bg-brand-accent text-white font-bold rounded-2xl transition-all duration-500 flex items-center justify-center gap-3 cursor-pointer shadow-xl shadow-slate-900/5 hover:shadow-brand-accent/25 hover:-translate-y-0.5 disabled:opacity-75">
+                  className="group relative w-full py-4 bg-gray-900 hover:bg-brand-accent text-white font-bold rounded-2xl transition-all duration-500 flex items-center justify-center gap-3 cursor-pointer shadow-xl shadow-slate-900/5 hover:shadow-brand-accent/25 hover:-translate-y-0.5 disabled:opacity-75">
                   {loading ? <Loader2 className="animate-spin h-5 w-5" /> : "Sign In"}
                 </button>
               </div>
 
               <div className="text-center text-sm text-gray-500">
                 Don't have an account?{" "}
-                <Link to="/register" className="text-gray-900 hover:text-brand-accent font-bold transition-colors">Sign Up</Link>
+                <Link to="/onboarding" className="text-gray-900 hover:text-brand-accent font-bold transition-colors">Sign Up</Link>
+              </div>
+
+              {/* Designer Callout */}
+              <div className="bg-brand-accent/5 border border-brand-accent/10 rounded-xl p-3.5 text-center">
+                <p className="text-sm text-gray-600">
+                  Are you an interior designer or architect?{" "}
+                  <Link to="/onboarding" className="text-brand-accent font-bold hover:underline">Join Marketplace</Link>
+                </p>
               </div>
             </form>
           )}

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../supabaseClient";
+import BillingTab from "../components/BillingTab";
 import {
   Users,
   Image as ImageIcon,
@@ -28,6 +29,7 @@ import {
   Calendar,
   Zap,
   CheckCircle,
+  CreditCard,
   ChevronDown,
   ChevronUp,
   UserCheck,
@@ -40,7 +42,8 @@ import {
   CalendarClock,
   ShieldCheck,
   AlertTriangle,
-  Globe
+  Globe,
+  Sparkles
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { compressImage } from "../utils/imageCompression";
@@ -78,10 +81,12 @@ const parseLeadMessage = (messageStr) => {
   return { isStructured: false, rawMessage: messageStr };
 };
 
-// --- COMPONENT: ADD PROJECT MODAL (With Custom Rooms) ---
+// --- COMPONENT: ADD PROJECT MODAL (With Custom Rooms & Coupled Room Materials) ---
 const AddProjectModal = ({ onClose, onAdd, designerId }) => {
   const [form, setForm] = useState({ title: "", place: "", description: "" });
   const [roomUploads, setRoomUploads] = useState({});
+  const [roomMaterials, setRoomMaterials] = useState({});
+  const [currentRoomInputs, setCurrentRoomInputs] = useState({});
   const [uploading, setUploading] = useState(false);
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [customCategory, setCustomCategory] = useState("");
@@ -112,6 +117,33 @@ const AddProjectModal = ({ onClose, onAdd, designerId }) => {
     setRoomUploads(prev => ({ ...prev, [trimmed]: [] }));
     setCustomCategory("");
     setShowCustomInput(false);
+  };
+
+  const handleAddMaterialForRoom = (category) => {
+    const inputVal = (currentRoomInputs[category] || "").trim();
+    if (!inputVal) return;
+
+    setRoomMaterials((prev) => {
+      const existing = prev[category] || [];
+      if (existing.includes(inputVal)) return prev;
+      return { ...prev, [category]: [...existing, inputVal] };
+    });
+
+    setCurrentRoomInputs((prev) => ({ ...prev, [category]: "" }));
+  };
+
+  const handleRemoveMaterialTag = (category, tagToRemove) => {
+    setRoomMaterials((prev) => {
+      const existing = prev[category] || [];
+      const updated = existing.filter((t) => t !== tagToRemove);
+      const newObj = { ...prev };
+      if (updated.length === 0) {
+        delete newObj[category];
+      } else {
+        newObj[category] = updated;
+      }
+      return newObj;
+    });
   };
 
   const handleFileSelect = (e, category) => {
@@ -152,6 +184,7 @@ const AddProjectModal = ({ onClose, onAdd, designerId }) => {
           title: form.title,
           place: form.place, 
           project_category: projectDataString,
+          room_materials: roomMaterials,
           status: "approved",
         })
         .select()
@@ -215,6 +248,7 @@ const AddProjectModal = ({ onClose, onAdd, designerId }) => {
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
                 required
+                autoFocus
               />
             </div>
             <div>
@@ -234,7 +268,7 @@ const AddProjectModal = ({ onClose, onAdd, designerId }) => {
           </div>
 
           <div>
-             <label className="block text-sm font-bold text-gray-900 mb-2">Project Details & Materials</label>
+             <label className="block text-sm font-bold text-gray-900 mb-2">Project Details</label>
              <textarea
                placeholder="Describe the scope, the materials used..."
                className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3.5 text-gray-900 focus:border-brand-accent focus:ring-1 focus:ring-brand-accent outline-none h-28 resize-none transition-all"
@@ -245,7 +279,7 @@ const AddProjectModal = ({ onClose, onAdd, designerId }) => {
           </div>
           
           <div>
-             <label className="block text-sm font-bold text-gray-900 mb-3">Which rooms did you design? (Select to upload photos)</label>
+             <label className="block text-sm font-bold text-gray-900 mb-3">Which rooms did you design? (Select to upload photos & materials)</label>
              <div className="flex flex-wrap gap-2.5 mb-6 items-center">
                {standardCategories.map(cat => {
                  const isSelected = selectedCategories.includes(cat);
@@ -315,7 +349,7 @@ const AddProjectModal = ({ onClose, onAdd, designerId }) => {
 
           {selectedCategories.length > 0 && (
             <div className="space-y-6 pt-4 border-t border-gray-100">
-              <h3 className="font-bold text-gray-900">Upload Room Images</h3>
+              <h3 className="font-bold text-gray-900">Upload Room Images & Materials</h3>
               {selectedCategories.map((category) => (
                 <div key={category} className="bg-gray-50 p-5 rounded-2xl border border-gray-200">
                   <div className="flex justify-between items-center mb-3">
@@ -330,7 +364,7 @@ const AddProjectModal = ({ onClose, onAdd, designerId }) => {
                     <p className="text-gray-600 text-sm font-medium">Click to upload <span className="lowercase">{category}</span> images</p>
                   </div>
                   {roomUploads[category].length > 0 && (
-                    <div className="grid grid-cols-4 sm:grid-cols-5 gap-3 animate-fade-in">
+                    <div className="grid grid-cols-4 sm:grid-cols-5 gap-3 animate-fade-in mb-4">
                       {roomUploads[category].map((file, index) => (
                         <div key={index} className="relative aspect-square bg-gray-200 rounded-lg overflow-hidden border border-gray-200 shadow-sm">
                           <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-full object-cover" />
@@ -341,6 +375,55 @@ const AddProjectModal = ({ onClose, onAdd, designerId }) => {
                       ))}
                     </div>
                   )}
+
+                  {/* --- ROOM MATERIALS TAG INPUT (Coupled directly underneath Image Upload) --- */}
+                  <div className="pt-3 border-t border-gray-200/80 space-y-2">
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
+                      Materials Used in {category}
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder={`Type material for ${category} (e.g. Quartz) & press Enter...`}
+                        className="flex-1 bg-white border border-gray-200 rounded-xl p-2.5 text-xs text-gray-900 outline-none focus:border-brand-accent transition-all"
+                        value={currentRoomInputs[category] || ""}
+                        onChange={(e) => setCurrentRoomInputs({ ...currentRoomInputs, [category]: e.target.value })}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleAddMaterialForRoom(category);
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleAddMaterialForRoom(category)}
+                        className="bg-gray-900 hover:bg-black text-white px-3.5 rounded-xl text-xs font-bold transition-all"
+                      >
+                        Add
+                      </button>
+                    </div>
+
+                    {Array.isArray(roomMaterials[category]) && roomMaterials[category].length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                        {roomMaterials[category].map((tag) => (
+                          <span
+                            key={tag}
+                            className="bg-brand-accent/10 text-brand-accent text-xs font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1 border border-brand-accent/20"
+                          >
+                            {tag}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveMaterialTag(category, tag)}
+                              className="hover:text-red-500 transition-colors"
+                            >
+                              <X size={12} />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -354,7 +437,7 @@ const AddProjectModal = ({ onClose, onAdd, designerId }) => {
   );
 };
 
-// --- COMPONENT: EDIT PROJECT MODAL (Room-Based) ---
+// --- COMPONENT: EDIT PROJECT MODAL (Room-Based & Coupled Room Materials) ---
 const EditProjectModal = ({ project, designerId, onClose, onUpdate }) => {
   const parsedData = parseProjectCategory(project.project_category);
   const [form, setForm] = useState({
@@ -367,6 +450,12 @@ const EditProjectModal = ({ project, designerId, onClose, onUpdate }) => {
   const [imagesToDelete, setImagesToDelete] = useState([]); 
   
   const [roomUploads, setRoomUploads] = useState({});
+  const [roomMaterials, setRoomMaterials] = useState(
+    typeof project.room_materials === "string"
+      ? (() => { try { return JSON.parse(project.room_materials); } catch { return {}; } })()
+      : (project.room_materials || {})
+  );
+  const [currentRoomInputs, setCurrentRoomInputs] = useState({});
   const [saving, setSaving] = useState(false);
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [customCategory, setCustomCategory] = useState("");
@@ -411,6 +500,33 @@ const EditProjectModal = ({ project, designerId, onClose, onUpdate }) => {
     setShowCustomInput(false);
   };
 
+  const handleAddMaterialForRoom = (category) => {
+    const inputVal = (currentRoomInputs[category] || "").trim();
+    if (!inputVal) return;
+
+    setRoomMaterials((prev) => {
+      const existing = prev[category] || [];
+      if (existing.includes(inputVal)) return prev;
+      return { ...prev, [category]: [...existing, inputVal] };
+    });
+
+    setCurrentRoomInputs((prev) => ({ ...prev, [category]: "" }));
+  };
+
+  const handleRemoveMaterialTag = (category, tagToRemove) => {
+    setRoomMaterials((prev) => {
+      const existing = prev[category] || [];
+      const updated = existing.filter((t) => t !== tagToRemove);
+      const newObj = { ...prev };
+      if (updated.length === 0) {
+        delete newObj[category];
+      } else {
+        newObj[category] = updated;
+      }
+      return newObj;
+    });
+  };
+
   const handleFileSelect = (e, category) => {
     if (e.target.files && e.target.files.length > 0) {
       const newFiles = Array.from(e.target.files);
@@ -447,7 +563,8 @@ const EditProjectModal = ({ project, designerId, onClose, onUpdate }) => {
         .update({ 
           title: form.title, 
           place: form.place,
-          project_category: projectDataString 
+          project_category: projectDataString,
+          room_materials: roomMaterials
         })
         .eq("id", project.id);
 
@@ -485,7 +602,8 @@ const EditProjectModal = ({ project, designerId, onClose, onUpdate }) => {
       onUpdate(project.id, { 
         ...form, 
         project_images: finalImages, 
-        project_category: projectDataString 
+        project_category: projectDataString,
+        room_materials: roomMaterials
       });
       
       toast.success("Updated Successfully!");
@@ -498,22 +616,22 @@ const EditProjectModal = ({ project, designerId, onClose, onUpdate }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4 overflow-y-auto">
-      <div className="bg-white border border-gray-200 w-full max-w-2xl rounded-2xl p-8 shadow-2xl animate-in fade-in zoom-in duration-200 relative max-h-[90vh] overflow-y-auto no-scrollbar">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4 animate-in fade-in transition-all">
+      <div className="bg-white border border-gray-200 w-full max-w-2xl rounded-2xl p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto no-scrollbar">
         <button onClick={onClose} className="absolute top-6 right-6 text-gray-500 hover:text-gray-900 transition-colors">
           <X size={24} />
         </button>
         <h2 className="text-2xl font-bold text-gray-900 mb-8 flex items-center gap-3">
           <Edit2 size={24} className="text-brand-accent p-1 bg-brand-accent/10 rounded-lg" /> Edit Project
         </h2>
-        
+
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-bold text-gray-900 mb-2">Project Title</label>
               <input
                 type="text"
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3.5 text-gray-900 focus:border-brand-accent focus:ring-1 focus:ring-brand-accent outline-none"
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3.5 text-gray-900 focus:border-brand-accent outline-none"
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
                 required
@@ -521,16 +639,13 @@ const EditProjectModal = ({ project, designerId, onClose, onUpdate }) => {
             </div>
             <div>
               <label className="block text-sm font-bold text-gray-900 mb-2">Location / Place</label>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-3.5 text-gray-400" size={18} />
-                <input
-                  type="text"
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3.5 pl-10 text-gray-900 focus:border-brand-accent outline-none"
-                  value={form.place}
-                  onChange={(e) => setForm({ ...form, place: e.target.value })}
-                  required
-                />
-              </div>
+              <input
+                type="text"
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3.5 text-gray-900 focus:border-brand-accent outline-none"
+                value={form.place}
+                onChange={(e) => setForm({ ...form, place: e.target.value })}
+                required
+              />
             </div>
           </div>
 
@@ -583,7 +698,7 @@ const EditProjectModal = ({ project, designerId, onClose, onUpdate }) => {
 
           {selectedCategories.length > 0 && (
             <div className="space-y-6 pt-4 border-t border-gray-100">
-              <h3 className="font-bold text-gray-900">Manage Room Images</h3>
+              <h3 className="font-bold text-gray-900">Manage Room Images & Materials</h3>
               {selectedCategories.map((category) => {
                 const existingImgsForCat = existingImages.filter(img => img.room_category === category || (!img.room_category && category === "Living Room"));
                 const newImgsForCat = roomUploads[category] || [];
@@ -615,7 +730,7 @@ const EditProjectModal = ({ project, designerId, onClose, onUpdate }) => {
                     </div>
 
                     {newImgsForCat.length > 0 && (
-                      <div>
+                      <div className="mb-4">
                         <p className="text-xs font-bold text-green-600 mb-2 uppercase">Ready to Upload</p>
                         <div className="grid grid-cols-4 sm:grid-cols-5 gap-3">
                           {newImgsForCat.map((file, index) => (
@@ -629,6 +744,55 @@ const EditProjectModal = ({ project, designerId, onClose, onUpdate }) => {
                         </div>
                       </div>
                     )}
+
+                    {/* --- ROOM MATERIALS TAG INPUT (Coupled directly underneath Image Upload) --- */}
+                    <div className="pt-3 border-t border-gray-200/80 space-y-2">
+                      <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
+                        Materials Used in {category}
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder={`Type material for ${category} (e.g. Quartz) & press Enter...`}
+                          className="flex-1 bg-white border border-gray-200 rounded-xl p-2.5 text-xs text-gray-900 outline-none focus:border-brand-accent transition-all"
+                          value={currentRoomInputs[category] || ""}
+                          onChange={(e) => setCurrentRoomInputs({ ...currentRoomInputs, [category]: e.target.value })}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleAddMaterialForRoom(category);
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleAddMaterialForRoom(category)}
+                          className="bg-gray-900 hover:bg-black text-white px-3.5 rounded-xl text-xs font-bold transition-all"
+                        >
+                          Add
+                        </button>
+                      </div>
+
+                      {Array.isArray(roomMaterials[category]) && roomMaterials[category].length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                          {roomMaterials[category].map((tag) => (
+                            <span
+                              key={tag}
+                              className="bg-brand-accent/10 text-brand-accent text-xs font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1 border border-brand-accent/20"
+                            >
+                              {tag}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveMaterialTag(category, tag)}
+                                className="hover:text-red-500 transition-colors"
+                              >
+                                <X size={12} />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -643,6 +807,8 @@ const EditProjectModal = ({ project, designerId, onClose, onUpdate }) => {
     </div>
   );
 };
+
+
 
 // --- COMPONENT: LEAD CARD ---
 const LeadCard = ({ lead, onStatusUpdate }) => {
@@ -721,158 +887,7 @@ const LeadCard = ({ lead, onStatusUpdate }) => {
   );
 };
 
-// --- NEW COMPONENT: SUBSCRIPTION STATUS CARD ---
-const SubscriptionStatusCard = ({ designer, onRequestRenewal }) => {
-  if (!designer) return null;
 
-  let daysLeft = 0;
-  if (designer.subscription_end) {
-    const diff = new Date(designer.subscription_end) - new Date();
-    daysLeft = Math.ceil(diff / (1000 * 60 * 60 * 24));
-  }
-
-  const isExpired = daysLeft < 0;
-  const isExpiringSoon = daysLeft <= 30 && daysLeft >= 0;
-  const isHealthy = daysLeft > 30;
-
-  const formatDateCompact = (dateString) => {
-    if (!dateString) return "N/A";
-    return new Date(dateString).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
-  };
-
-  return (
-    <div
-      className={`px-6 py-4 rounded-2xl border mb-4 flex flex-row items-center justify-between gap-4 shadow-sm transition-all duration-300
-      ${
-        isHealthy
-          ? "bg-blue-50/40 border-blue-100/60"
-          : isExpiringSoon
-          ? "bg-orange-50/40 border-orange-100/60"
-          : "bg-red-50/40 border-red-100/60"
-      }`}
-    >
-      <div className="flex items-center gap-3">
-        {isHealthy ? (
-          <ShieldCheck className="text-blue-500 shrink-0" size={18} />
-        ) : isExpiringSoon ? (
-          <AlertTriangle className="text-orange-500 shrink-0" size={18} />
-        ) : (
-          <XCircle className="text-red-500 shrink-0" size={18} />
-        )}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-          <span className="font-bold text-gray-900 text-sm">
-            {isHealthy ? "Subscription Active" : isExpiringSoon ? "Subscription Expiring Soon" : "Subscription Expired"}
-          </span>
-          <span className="hidden sm:inline text-gray-300 text-sm">•</span>
-          <span className="text-xs text-gray-500 font-medium">
-            {formatDateCompact(designer.subscription_start)} - {formatDateCompact(designer.subscription_end)}
-            {" • "}{daysLeft > 0 ? `${daysLeft} days left` : "Expired"}
-          </span>
-        </div>
-      </div>
-
-      <div className="shrink-0">
-        {designer.renewal_requested ? (
-          <span className="text-xs font-bold text-gray-400">Renewal Requested</span>
-        ) : (
-          <button
-            onClick={onRequestRenewal}
-            className={`px-4 py-2 text-white font-bold text-xs uppercase tracking-wider rounded-lg transition-all active:scale-95 shadow-md ${
-              isExpired ? "bg-red-600 hover:bg-red-700" : isExpiringSoon ? "bg-orange-500 hover:bg-orange-600" : "bg-gray-900 hover:bg-black"
-            }`}
-          >
-            Request Extension
-          </button>
-        )}
-      </div>
-    </div>
-  );
-};
-
-
-// --- FEATURED STATUS CARD ---
-const FeaturedStatusCard = ({ designer, onRequestFeature }) => {
-  if (!designer) return null;
-  const isFeatured = designer.featured_status === "featured";
-  const isRequested = designer.featured_status === "requested";
-  let daysLeft = 0;
-  if (designer.featured_expiry) {
-    const diff = new Date(designer.featured_expiry) - new Date();
-    daysLeft = Math.ceil(diff / (1000 * 60 * 60 * 24));
-  }
-  const isExpired = daysLeft < 0;
-  const isCritical = daysLeft < 5;
-
-  const formatDateCompact = (dateString) => {
-    if (!dateString) return "N/A";
-    return new Date(dateString).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
-  };
-
-  return (
-    <div
-      className={`px-6 py-4 rounded-2xl border mb-6 flex flex-row items-center justify-between gap-4 shadow-sm transition-all duration-300
-      ${
-        isFeatured && !isCritical
-          ? "bg-emerald-50/40 border-emerald-100/60"
-          : isFeatured && isCritical
-          ? "bg-red-50/40 border-red-100/60"
-          : isRequested
-          ? "bg-yellow-50/40 border-yellow-100/60"
-          : "bg-gray-50/40 border-gray-200/60"
-      }`}
-    >
-      <div className="flex items-center gap-3">
-        {isFeatured && !isCritical ? (
-          <Star className="text-emerald-500 fill-emerald-500 shrink-0" size={18} />
-        ) : isFeatured && isCritical ? (
-          <AlertCircle className="text-red-500 shrink-0" size={18} />
-        ) : isRequested ? (
-          <Clock className="text-yellow-600 shrink-0" size={18} />
-        ) : (
-          <Zap className="text-gray-400 shrink-0" size={18} />
-        )}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-          <span className="font-bold text-gray-900 text-sm">
-            {isFeatured && !isCritical ? "Featured Partner" : isFeatured && isCritical ? (isExpired ? "Visibility Expired" : "Visibility Expiring") : isRequested ? "Upgrade Requested" : "Standard Profile"}
-          </span>
-          {isFeatured && (
-            <>
-              <span className="hidden sm:inline text-gray-300 text-sm">•</span>
-              <span className="text-xs text-gray-500 font-medium">
-                Valid until {formatDateCompact(designer.featured_expiry)} ({daysLeft} days remaining)
-              </span>
-            </>
-          )}
-          {!isFeatured && !isRequested && (
-            <>
-              <span className="hidden sm:inline text-gray-300 text-sm">•</span>
-              <span className="text-xs text-gray-500 font-medium">Unlock premium visibility directory</span>
-            </>
-          )}
-          {isRequested && (
-            <>
-              <span className="hidden sm:inline text-gray-300 text-sm">•</span>
-              <span className="text-xs text-gray-500 font-medium">Pending review by administrators</span>
-            </>
-          )}
-        </div>
-      </div>
-
-      <div className="shrink-0">
-        {(isCritical || !isFeatured) && !isRequested && (
-          <button
-            onClick={onRequestFeature}
-            className="px-4 py-2 bg-gray-900 text-white hover:bg-brand-accent font-bold text-xs uppercase tracking-wider rounded-lg transition-all active:scale-95 shadow-md"
-          >
-            {isExpired ? "Renew Visibility" : "Upgrade"}
-          </button>
-        )}
-        {isRequested && <span className="text-xs font-bold text-gray-400">Pending Approval</span>}
-        {isFeatured && !isCritical && <span className="text-xs font-bold text-emerald-600">Active</span>}
-      </div>
-    </div>
-  );
-};
 
 // --- IMPROVED PROJECT CARD ---
 const ProjectCard = ({ proj, onDelete, onEdit }) => {
@@ -968,20 +983,32 @@ const DesignerDashboard = () => {
   const [projects, setProjects] = useState([]);
   
   const [profileForm, setProfileForm] = useState({
-    name: "", city: "", bio: "", about_text: "", experience_years: 0,
+    name: "", city: "", projects_completed: 0, about_text: "", experience_years: 0,
     video_link: "", video_link_2: "", designer_type: "interior",
     style_tags: [], logo_url: "", phone: "", email: "", is_public: true
   });
   const [newTag, setNewTag] = useState("");
   const [logoFile, setLogoFile] = useState(null);
 
-  // --- Calculate if Subscription is Expired ---
-  let daysLeft = 0;
-  if (designer?.subscription_end) {
-    const diff = new Date(designer.subscription_end) - new Date();
-    daysLeft = Math.ceil(diff / (1000 * 60 * 60 * 24));
-  }
-  const isExpired = daysLeft < 0;
+  // --- Calculate Days Remaining & Expiry Warning State ---
+  const calculateDaysRemaining = (subscriptionEnd) => {
+    if (!subscriptionEnd) return 0;
+    const diff = new Date(subscriptionEnd) - new Date();
+    return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  };
+
+  const daysLeft = calculateDaysRemaining(designer?.subscription_end);
+
+  // 1. Pending Payment (Has no subscription end date yet)
+  const isPendingPayment = designer?.is_subscription_active === false && !designer?.subscription_end;
+
+  // 2. Expired User (Has an end date, but it's in the past)
+  const isExpired = designer?.is_subscription_active === false && designer?.subscription_end && daysLeft < 0;
+
+  // 3. Final Lockout Trigger (Bypassed if Admin Override is active)
+  const isLockedOut = !adminDesignerId && (isPendingPayment || isExpired);
+
+  const showWarningBanner = (designer?.is_subscription_active !== false) && Boolean(designer?.subscription_end) && (daysLeft >= 0 && daysLeft <= 7);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -1007,7 +1034,7 @@ const DesignerDashboard = () => {
 
         setDesigner(designerData);
         setProfileForm({
-          name: designerData.name || "", city: designerData.city || "", bio: designerData.bio || "",
+          name: designerData.name || "", city: designerData.city || "", projects_completed: designerData.projects_completed ?? 0,
           about_text: designerData.about_text || "", experience_years: designerData.experience_years || 0,
           video_link: designerData.video_link || "", video_link_2: designerData.video_link_2 || "",
           designer_type: designerData.designer_type || "interior", style_tags: designerData.style_tags || [],
@@ -1015,7 +1042,7 @@ const DesignerDashboard = () => {
           is_public: designerData.is_public !== false
         });
 
-        if (!designerData.bio || !designerData.about_text) setIsProfileIncomplete(true);
+        if (designerData.projects_completed === undefined || designerData.projects_completed === null || !designerData.about_text) setIsProfileIncomplete(true);
 
         const { data: leadsData } = await supabase
           .from("connections")
@@ -1034,6 +1061,99 @@ const DesignerDashboard = () => {
     };
     fetchData();
   }, [navigate, adminDesignerId]); 
+
+  const handleInitiateRazorpayCheckout = async (tierInput = "subscription") => {
+    const tier = (tierInput === "new" || tierInput === "renew") ? "subscription" : tierInput;
+    const toastId = toast.loading("Initializing payment...");
+
+    try {
+      const { data: orderData, error: orderError } = await supabase.functions.invoke("create-razorpay-order", {
+        body: { tier },
+      });
+
+      if (orderError || !orderData?.id) {
+        throw new Error(orderError?.message || orderData?.error || "Failed to create order");
+      }
+
+      toast.dismiss(toastId);
+
+      const options = {
+        key: import.meta.env.VITE_RAZORPAY_KEY_ID || "rzp_test_placeholder",
+        amount: orderData.amount,
+        currency: orderData.currency || "INR",
+        name: "Vishvakarmans",
+        description: tier === "subscription" ? "Partner Subscription" : "Featured Designer Boost",
+        order_id: orderData.id,
+        handler: async (response) => {
+          const verifyToastId = toast.loading("Verifying payment...");
+          try {
+            const { data: verifyData, error: verifyError } = await supabase.functions.invoke(
+              "verify-razorpay-payment",
+              {
+                body: {
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                  tier,
+                  designer_id: designer?.id,
+                },
+              }
+            );
+
+            if (verifyError || !verifyData?.success) {
+              throw new Error(verifyError?.message || verifyData?.error || "Payment verification failed");
+            }
+
+            toast.success("Payment Successful!", { id: verifyToastId });
+
+            if (tier === "subscription") {
+              setDesigner((prev) => ({
+                ...prev,
+                is_subscription_active: true,
+                is_public: true,
+                subscription_end: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+              }));
+            } else if (tier.startsWith("featured_")) {
+              let days = 30;
+              if (tier === "featured_90") days = 90;
+              if (tier === "featured_365") days = 365;
+              setDesigner((prev) => ({
+                ...prev,
+                featured_status: "featured",
+                featured_expiry: new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString(),
+              }));
+            }
+          } catch (err) {
+            toast.error(err.message || "Payment verification failed", { id: verifyToastId });
+          }
+        },
+        prefill: {
+          name: designer?.name || "",
+          email: designer?.email || "",
+          contact: designer?.phone || "",
+        },
+        theme: {
+          color: "#ea580c",
+        },
+      };
+
+      if (window.Razorpay) {
+        const rzp = new window.Razorpay(options);
+        rzp.open();
+      } else {
+        toast.error("Razorpay SDK failed to load. Please refresh the page.");
+      }
+    } catch (err) {
+      toast.error(err.message || "Could not start checkout", { id: toastId });
+    }
+  };
+
+  useEffect(() => {
+    window.initiateRazorpayCheckout = handleInitiateRazorpayCheckout;
+    return () => {
+      delete window.initiateRazorpayCheckout;
+    };
+  }, [designer]);
 
   const handleRequestRenewal = async () => {
     try {
@@ -1075,7 +1195,7 @@ const DesignerDashboard = () => {
         finalUrl = supabase.storage.from("portfolio").getPublicUrl(fileName).data.publicUrl;
       }
       const updatePayload = {
-        name: profileForm.name, city: profileForm.city, bio: profileForm.bio, about_text: profileForm.about_text,
+        name: profileForm.name, city: profileForm.city, projects_completed: parseInt(profileForm.projects_completed) || 0, about_text: profileForm.about_text,
         experience_years: parseInt(profileForm.experience_years) || 0, video_link: profileForm.video_link,
         video_link_2: profileForm.video_link_2, designer_type: profileForm.designer_type,
         phone: profileForm.phone, email: profileForm.email, style_tags: profileForm.style_tags, logo_url: finalUrl,
@@ -1198,7 +1318,7 @@ const DesignerDashboard = () => {
           {(profileForm.style_tags || []).map((tag) => <span key={tag} className="bg-gray-100 px-2 py-1 rounded text-xs flex items-center gap-1">{tag} <button type="button" onClick={() => removeTag(tag)}><XCircle size={12} /></button></span>)}
         </div>
       </div>
-      <div><label className="text-xs font-bold text-gray-500 uppercase">Bio</label><input type="text" className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-gray-900 mt-1" value={profileForm.bio} onChange={(e) => setProfileForm({ ...profileForm, bio: e.target.value })} /></div>
+      <div><label className="text-xs font-bold text-gray-500 uppercase">Total Projects Completed</label><input type="number" min="0" className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-gray-900 mt-1" value={profileForm.projects_completed} onChange={(e) => setProfileForm({ ...profileForm, projects_completed: e.target.value })} /></div>
       <div><label className="text-xs font-bold text-gray-500 uppercase">About</label><textarea rows="4" className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-gray-900 mt-1" value={profileForm.about_text} onChange={(e) => setProfileForm({ ...profileForm, about_text: e.target.value })} /></div>
       <div className="space-y-4">
         <label className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2"><Video size={14} /> Video Intros (Optional)</label>
@@ -1213,105 +1333,194 @@ const DesignerDashboard = () => {
   if (isProfileIncomplete) return <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4"><div className="w-full max-w-2xl"><h1 className="text-2xl font-bold text-gray-900 text-center mb-6">Complete Profile</h1>{renderProfileForm()}</div></div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row text-gray-900 overflow-hidden relative">
-      {adminDesignerId && (
-        <div className="absolute top-0 left-0 w-full bg-blue-600 text-white p-2 text-center text-xs font-bold flex items-center justify-center gap-2 z-[100] shadow-md">
-          <ShieldAlert size={14} /> ADMIN OVERRIDE MODE: You are managing {designer?.name}'s profile.
-          <button onClick={() => navigate("/admin")} className="ml-4 underline hover:text-blue-200">Exit to Admin Panel</button>
-        </div>
-      )}
-
-      <nav className={`md:hidden fixed bottom-0 w-full bg-white border-t border-gray-200 z-50 flex justify-around p-3 safe-area-bottom shadow-2xl ${adminDesignerId ? 'pb-8' : ''}`}>
-        <button onClick={() => setActiveTab("leads")} className={`flex flex-col items-center gap-1 ${activeTab === "leads" ? "text-brand-accent" : "text-gray-500"}`}><Users size={20} /><span className="text-[10px]">Leads</span></button>
-        <button onClick={() => setActiveTab("projects")} className={`flex flex-col items-center gap-1 ${activeTab === "projects" ? "text-brand-accent" : "text-gray-500"}`}><ImageIcon size={20} /><span className="text-[10px]">Work</span></button>
-        <button onClick={() => setActiveTab("settings")} className={`flex flex-col items-center gap-1 ${activeTab === "settings" ? "text-brand-accent" : "text-gray-500"}`}><Settings size={20} /><span className="text-[10px]">Profile</span></button>
-      </nav>
-      
-      <div className={`md:hidden fixed top-0 w-full bg-white border-b border-gray-200 z-40 p-4 flex justify-between items-center ${adminDesignerId ? 'mt-8' : ''}`}>
-        <div className="flex items-center gap-2 text-brand-accent font-bold text-lg"><Briefcase size={20} /> Dashboard</div>
-        <button onClick={handleLogout} className="bg-red-50 text-red-500 p-2 rounded-lg border border-red-100"><LogOut size={18} /></button>
-      </div>
-
-      <aside className={`hidden md:flex w-72 bg-white border-r border-gray-200 flex-col p-6 sticky top-0 h-screen overflow-y-auto ${adminDesignerId ? 'pt-12' : ''}`}>
-        <div className="flex flex-col items-center mb-10 text-center">
-          <div className="w-24 h-24 bg-gray-100 rounded-full mb-4 border-2 border-gray-200 overflow-hidden shadow-sm">
-            {designer?.logo_url ? <img src={designer.logo_url} className="w-full h-full object-cover" /> : <div className="h-full flex items-center justify-center font-bold text-3xl text-gray-400">{designer?.name?.[0]}</div>}
+    <div className="relative min-h-screen bg-gray-50">
+      <div className={`min-h-screen bg-gray-50 flex flex-col md:flex-row text-gray-900 overflow-hidden relative transition-all duration-300 ${isLockedOut ? "blur-sm pointer-events-none select-none opacity-60" : ""}`}>
+        {adminDesignerId && (
+          <div className="absolute top-0 left-0 w-full bg-blue-600 text-white p-2 text-center text-xs font-bold flex items-center justify-center gap-2 z-[100] shadow-md">
+            <ShieldAlert size={14} /> ADMIN OVERRIDE MODE: You are managing {designer?.name}'s profile.
+            <button onClick={() => navigate("/admin")} className="ml-4 underline hover:text-blue-200">Exit to Admin Panel</button>
           </div>
-          <h2 className="text-gray-900 font-bold text-lg truncate w-full">{designer?.name}</h2>
-          <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 text-[10px] font-bold tracking-widest uppercase px-2 py-1 rounded mt-2">Verified Partner</span>
-        </div>
-        <div className="space-y-2 flex-1">
-          <button onClick={() => setActiveTab("leads")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${activeTab === "leads" ? "bg-gray-900 text-white shadow-md" : "text-gray-600 hover:bg-gray-100"}`}><Users size={20} /> Inquiries</button>
-          <button onClick={() => setActiveTab("projects")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${activeTab === "projects" ? "bg-gray-900 text-white shadow-md" : "text-gray-600 hover:bg-gray-100"}`}><ImageIcon size={20} /> Portfolio</button>
-          <button onClick={() => setActiveTab("settings")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${activeTab === "settings" ? "bg-gray-900 text-white shadow-md" : "text-gray-600 hover:bg-gray-100"}`}><Settings size={20} /> Edit Profile</button>
-        </div>
-        <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-red-600 hover:bg-red-50 mt-auto border border-transparent hover:border-red-200 transition-colors"><LogOut size={20} /> Sign Out</button>
-      </aside>
-      
-      <main className={`flex-1 p-4 md:p-10 mt-16 md:mt-0 mb-20 md:mb-0 overflow-y-auto h-[calc(100vh-140px)] md:h-screen ${adminDesignerId ? 'md:pt-16' : ''}`}>
-        
-        <SubscriptionStatusCard designer={designer} onRequestRenewal={handleRequestRenewal} />
-        
-        <FeaturedStatusCard designer={designer} onRequestFeature={handleRequestFeature} />
+        )}
 
-        {activeTab === "leads" && (
-          <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-              <h1 className="text-2xl md:text-3xl font-bold text-gray-900 flex items-center gap-3">
-                <Users className="text-brand-accent" /> Inquiries & Clients
-              </h1>
-              <div className="flex bg-white border border-gray-200 rounded-lg p-1 shadow-sm w-full md:w-auto overflow-x-auto no-scrollbar">
-                {['pending', 'accepted', 'on_hold'].map(statusType => (
-                  <button
-                    key={statusType}
-                    onClick={() => setLeadFilter(statusType)}
-                    className={`px-4 py-2 rounded-md text-sm font-bold capitalize whitespace-nowrap transition-colors ${
-                      leadFilter === statusType 
-                      ? "bg-gray-900 text-white" 
-                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
-                    }`}
-                  >
-                    {statusType === 'pending' ? 'New Requests' : 
-                     statusType === 'accepted' ? 'Active Clients' : 'On Hold'}
-                  </button>
-                ))}
+        <nav className={`md:hidden fixed bottom-0 w-full bg-white border-t border-gray-200 z-50 flex justify-around p-3 safe-area-bottom shadow-2xl ${adminDesignerId ? 'pb-8' : ''}`}>
+          <button onClick={() => setActiveTab("leads")} className={`flex flex-col items-center gap-1 ${activeTab === "leads" ? "text-brand-accent" : "text-gray-500"}`}><Users size={20} /><span className="text-[10px]">Leads</span></button>
+          <button onClick={() => setActiveTab("projects")} className={`flex flex-col items-center gap-1 ${activeTab === "projects" ? "text-brand-accent" : "text-gray-500"}`}><ImageIcon size={20} /><span className="text-[10px]">Work</span></button>
+          <button onClick={() => setActiveTab("billing")} className={`flex flex-col items-center gap-1 ${activeTab === "billing" ? "text-brand-accent" : "text-gray-500"}`}><CreditCard size={20} /><span className="text-[10px]">Billing</span></button>
+          <button onClick={() => setActiveTab("settings")} className={`flex flex-col items-center gap-1 ${activeTab === "settings" ? "text-brand-accent" : "text-gray-500"}`}><Settings size={20} /><span className="text-[10px]">Profile</span></button>
+        </nav>
+        
+        <div className={`md:hidden fixed top-0 w-full bg-white border-b border-gray-200 z-40 p-4 flex justify-between items-center ${adminDesignerId ? 'mt-8' : ''}`}>
+          <div className="flex items-center gap-2 text-brand-accent font-bold text-lg"><Briefcase size={20} /> Designer Dashboard</div>
+          <button onClick={handleLogout} className="bg-red-50 text-red-500 p-2 rounded-lg border border-red-100"><LogOut size={18} /></button>
+        </div>
+
+        <aside className={`hidden md:flex w-72 bg-white border-r border-gray-200 flex-col p-6 sticky top-0 h-screen overflow-y-auto ${adminDesignerId ? 'pt-12' : ''}`}>
+          <div className="mb-6 w-full text-center">
+            <h1 className="text-xl font-black text-gray-900 tracking-tight">VISHWAKARMANS</h1>
+            <p className="text-[10px] font-bold text-orange-500 uppercase tracking-widest mt-0.5">Designers</p>
+          </div>
+          <div className="flex flex-col items-center mb-10 text-center">
+            <div className="w-24 h-24 bg-gray-100 rounded-full mb-4 border-2 border-gray-200 overflow-hidden shadow-sm">
+              {designer?.logo_url ? <img src={designer.logo_url} className="w-full h-full object-cover" /> : <div className="h-full flex items-center justify-center font-bold text-3xl text-gray-400">{designer?.name?.[0]}</div>}
+            </div>
+            <h2 className="text-gray-900 font-bold text-lg truncate w-full">{designer?.name}</h2>
+            <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 text-[10px] font-bold tracking-widest uppercase px-2 py-1 rounded mt-2">Verified Partner</span>
+          </div>
+          <div className="space-y-2 flex-1">
+            <button onClick={() => setActiveTab("leads")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${activeTab === "leads" ? "bg-gray-900 text-white shadow-md" : "text-gray-600 hover:bg-gray-100"}`}><Users size={20} /> Inquiries</button>
+            <button onClick={() => setActiveTab("projects")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${activeTab === "projects" ? "bg-gray-900 text-white shadow-md" : "text-gray-600 hover:bg-gray-100"}`}><ImageIcon size={20} /> Portfolio</button>
+            <button onClick={() => setActiveTab("billing")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${activeTab === "billing" ? "bg-gray-900 text-white shadow-md" : "text-gray-600 hover:bg-gray-100"}`}><CreditCard size={20} /> Billing & Marketing</button>
+            <button onClick={() => setActiveTab("settings")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${activeTab === "settings" ? "bg-gray-900 text-white shadow-md" : "text-gray-600 hover:bg-gray-100"}`}><Settings size={20} /> Edit Profile</button>
+          </div>
+          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-red-600 hover:bg-red-50 mt-auto border border-transparent hover:border-red-200 transition-colors"><LogOut size={20} /> Sign Out</button>
+        </aside>
+        
+        <main className={`flex-1 p-4 md:p-10 mt-16 md:mt-0 mb-20 md:mb-0 overflow-y-auto h-[calc(100vh-140px)] md:h-screen ${adminDesignerId ? 'md:pt-16' : ''}`}>
+          
+          {/* --- 7-DAY EXPIRY WARNING BANNER --- */}
+          {showWarningBanner && (
+            <div className="max-w-6xl mx-auto mb-6 bg-amber-50 border border-amber-200/80 text-amber-900 px-5 py-3.5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm transition-all animate-in fade-in">
+              <div className="flex items-center gap-3">
+                <AlertTriangle className="text-amber-500 shrink-0" size={20} />
+                <p className="text-sm font-medium leading-relaxed">
+                  Your access expires in <span className="font-bold">{daysLeft} {daysLeft === 1 ? "day" : "days"}</span>. Renew to maintain portfolio visibility and access to client leads.
+                </p>
+              </div>
+              <button
+                onClick={() => setActiveTab("billing")}
+                className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all shadow-sm shrink-0 uppercase tracking-wider active:scale-95"
+              >
+                Renew Now
+              </button>
+            </div>
+          )}
+          {activeTab === "leads" && (
+            <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+              {/* --- TOP STATISTICS CARDS (Real Supabase Data) --- */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Total Inquiries</p>
+                  <p className="text-2xl font-extrabold text-gray-900">{leads?.length || 0}</p>
+                </div>
+                <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Active Projects</p>
+                  <p className="text-2xl font-extrabold text-emerald-600">{projects?.length || 0}</p>
+                </div>
+                <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Profile Views</p>
+                  <p className="text-2xl font-extrabold text-brand-accent">{designer?.profile_views || 0}</p>
+                </div>
+              </div>
+
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                <h1 className="text-2xl md:text-3xl font-bold text-gray-900 flex items-center gap-3">
+                  <Users className="text-brand-accent" /> Inquiries & Clients
+                </h1>
+                <div className="flex bg-white border border-gray-200 rounded-lg p-1 shadow-sm w-full md:w-auto overflow-x-auto no-scrollbar">
+                  {['pending', 'accepted', 'on_hold'].map(statusType => (
+                    <button
+                      key={statusType}
+                      onClick={() => setLeadFilter(statusType)}
+                      className={`px-4 py-2 rounded-md text-sm font-bold capitalize whitespace-nowrap transition-colors ${
+                        leadFilter === statusType 
+                        ? "bg-gray-900 text-white" 
+                        : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+                      }`}
+                    >
+                      {statusType === 'pending' ? 'New Requests' : 
+                       statusType === 'accepted' ? 'Active Clients' : 'On Hold'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className={`grid gap-4 ${isLockedOut ? "blur-sm select-none pointer-events-none" : ""}`}>
+                {leads.filter((l) => l.status === leadFilter).length === 0 ? (
+                  <div className="bg-gray-50 border border-gray-200 border-dashed rounded-3xl p-8 md:p-12 text-center text-gray-500">
+                    <AlertCircle className="mx-auto mb-3 text-gray-400" size={40} />
+                    <p className="text-lg font-medium text-gray-600">No {leadFilter === "pending" ? "new requests" : leadFilter === "accepted" ? "active clients" : "clients on hold"}.</p>
+                  </div>
+                ) : (
+                  leads.filter((l) => l.status === leadFilter).map((lead) => (
+                    <LeadCard key={lead.id} lead={lead} onStatusUpdate={handleStatusUpdate} />
+                  ))
+                )}
               </div>
             </div>
+          )}
+          
+          {activeTab === "projects" && (
+            <div className="max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-8 text-center md:text-left">
+                <h1 className="text-2xl md:text-3xl font-bold text-gray-900 flex items-center gap-3"><Briefcase className="text-brand-accent" /> Portfolio</h1>
+                <button onClick={() => setShowAddProjectModal(true)} className="bg-gray-900 hover:bg-brand-accent text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 w-full md:w-auto justify-center transition-colors shadow-lg"><Plus size={20} /> Add Project</button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {projects.length === 0 ? (
+                  <div className="col-span-full border-2 border-dashed border-gray-300 rounded-2xl p-12 text-center bg-white">
+                    <div className="w-16 h-16 bg-brand-accent/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                      <Briefcase className="text-brand-accent" size={28} />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">Your portfolio is empty</h3>
+                    <p className="text-gray-500 mb-6 max-w-sm mx-auto">Upload your first project to start getting noticed by homeowners.</p>
+                    <button onClick={() => setShowAddProjectModal(true)} className="bg-brand-accent hover:bg-orange-600 text-white px-6 py-3 rounded-xl font-bold inline-flex items-center gap-2 transition-colors shadow-lg"><Plus size={18} /> Add Your First Project</button>
+                  </div>
+                ) : (
+                  projects.map((proj) => <ProjectCard key={proj.id} proj={proj} onDelete={handleDeleteProject} onEdit={setEditingProject} />)
+                )}
+              </div>
+            </div>
+          )}
 
-            <div className="grid gap-4">
-              {leads.filter((l) => l.status === leadFilter).length === 0 ? (
-                <div className="bg-gray-50 border border-gray-200 border-dashed rounded-3xl p-8 md:p-12 text-center text-gray-500">
-                  <AlertCircle className="mx-auto mb-3 text-gray-400" size={40} />
-                  <p className="text-lg font-medium text-gray-600">No {leadFilter === "pending" ? "new requests" : leadFilter === "accepted" ? "active clients" : "clients on hold"}.</p>
-                </div>
-              ) : (
-                leads.filter((l) => l.status === leadFilter).map((lead) => (
-                  <LeadCard key={lead.id} lead={lead} onStatusUpdate={handleStatusUpdate} />
-                ))
-              )}
+          {activeTab === "billing" && (
+            <BillingTab
+              designer={designer}
+              onRequestRenewal={handleRequestRenewal}
+              onRequestFeature={handleRequestFeature}
+              onCheckout={handleInitiateRazorpayCheckout}
+            />
+          )}
+          
+          {activeTab === "settings" && (
+            <div className="max-w-3xl mx-auto pb-10">
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-6 flex items-center gap-3"><Settings className="text-brand-accent" /> Profile Settings</h1>
+              {renderProfileForm()}
+            </div>
+          )}
+        </main>
+      </div>
+
+      {/* --- EXPIRED LOCKOUT PAYWALL MODAL --- */}
+      {isLockedOut && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white border border-gray-200 rounded-3xl p-8 max-w-md w-full text-center shadow-2xl space-y-6">
+
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto shadow-inner ${isPendingPayment ? 'bg-blue-50 text-blue-500' : 'bg-red-50 text-red-500'}`}>
+              {isPendingPayment ? <Sparkles size={32} /> : <Lock size={32} />}
+            </div>
+
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">
+                {isPendingPayment ? "Activate Your Account" : "Your License Has Expired"}
+              </h2>
+              <p className="text-sm text-gray-500 mt-2 leading-relaxed">
+                {isPendingPayment 
+                  ? "Your application has been approved! Complete your subscription payment to unlock your workspace and start receiving leads." 
+                  : "Renew your subscription to unlock your client leads and portfolio management."}
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <button onClick={() => window.initiateRazorpayCheckout(isPendingPayment ? 'new' : 'renew')} className="w-full py-3.5 bg-gray-900 hover:bg-black text-white font-bold rounded-xl shadow-lg transition-all active:scale-95">
+                {isPendingPayment ? "Pay & Activate Account" : "Renew Subscription"}
+              </button>
+              <button onClick={handleLogout} className="w-full text-sm font-semibold text-gray-500 hover:text-gray-900 transition-colors">
+                Sign Out
+              </button>
             </div>
           </div>
-        )}
-        
-        {activeTab === "projects" && (
-          <div className="max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-8 text-center md:text-left">
-              <h1 className="text-2xl md:text-3xl font-bold text-gray-900 flex items-center gap-3"><Briefcase className="text-brand-accent" /> Portfolio</h1>
-              <button onClick={() => setShowAddProjectModal(true)} className="bg-gray-900 hover:bg-brand-accent text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 w-full md:w-auto justify-center transition-colors shadow-lg"><Plus size={20} /> Add Project</button>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {projects.map((proj) => <ProjectCard key={proj.id} proj={proj} onDelete={handleDeleteProject} onEdit={setEditingProject} />)}
-            </div>
-          </div>
-        )}
-        
-        {activeTab === "settings" && (
-          <div className="max-w-3xl mx-auto pb-10">
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-6 flex items-center gap-3"><Settings className="text-brand-accent" /> Profile Settings</h1>
-            {renderProfileForm()}
-          </div>
-        )}
-      </main>
+        </div>
+      )}
 
       {showAddProjectModal && <AddProjectModal designerId={designer?.id} onClose={() => setShowAddProjectModal(false)} onAdd={(newProj) => setProjects([newProj, ...projects])} />}
       {editingProject && <EditProjectModal project={editingProject} designerId={designer?.id} onClose={() => setEditingProject(null)} onUpdate={(id, updates) => setProjects(projects.map((p) => (p.id === id ? { ...p, ...updates } : p)))} />}

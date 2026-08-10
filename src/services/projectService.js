@@ -136,22 +136,4 @@ export const createReview = async (payload) => {
   if (error) throw error;
 };
 
-// ── Marketplace Feed ─────────────────────────────────────────────────────
 
-/** Read the pre-computed marketplace feed (matview). */
-export const getMarketplaceFeed = async () => {
-  const { data, error } = await supabase
-    .from('mv_public_marketplace_feed')
-    .select('*');
-  if (error) throw error;
-  return data ?? [];
-};
-
-// ── View Logging ─────────────────────────────────────────────────────────
-
-/** Log a project view (authenticated only, fire-and-forget). */
-export const logProjectView = async (projectId, viewerId) => {
-  await supabase
-    .from('project_views_log')
-    .insert({ project_id: projectId, viewer_id: viewerId });
-};

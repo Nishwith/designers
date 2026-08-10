@@ -4,9 +4,10 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { vi, describe, test, expect, beforeEach } from 'vitest';
-import { RequireAuth } from '../components/AuthRoutes';
-import CompleteProfile from '../pages/complete-profile';
+import { RequireAuth, RequireDesigner, GuestRoute } from '../components/AuthRoutes';
+import UnifiedOnboarding from '../pages/UnifiedOnboarding';
 import DesignerDashboard from '../pages/DesignerDashboard';
+import Waitlist from '../pages/Waitlist';
 
 // Mock the services and hooks
 vi.mock('../services/authService', () => ({
@@ -32,9 +33,23 @@ const mockSupabaseClient = vi.hoisted(() => {
       return {
         select: () => ({
           eq: () => ({
-            single: () => Promise.resolve({ data: { role: 'designer' }, error: null }),
+            single: () => Promise.resolve({ data: { role: 'client', profile_completed: false }, error: null }),
+            maybeSingle: () => Promise.resolve({ data: { role: 'client', profile_completed: false }, error: null }),
           }),
         }),
+        update: () => ({
+          eq: () => Promise.resolve({ error: null }),
+        }),
+      };
+    }
+    if (table === 'designer_applications') {
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: () => Promise.resolve({ data: null, error: null }),
+          }),
+        }),
+        insert: () => Promise.resolve({ error: null }),
       };
     }
     if (table === 'designers') {
@@ -46,7 +61,7 @@ const mockSupabaseClient = vi.hoisted(() => {
                 id: 42,
                 user_id: 'designer-user-123',
                 name: 'Verified Designer',
-                bio: 'Experienced interior designer.',
+                projects_completed: 12,
                 about_text: 'I design premium homes.',
                 logo_url: 'https://example.com/logo.png',
               },
@@ -54,6 +69,7 @@ const mockSupabaseClient = vi.hoisted(() => {
             }),
           }),
         }),
+        insert: () => Promise.resolve({ error: null }),
         update: () => ({
           eq: () => Promise.resolve({ error: null }),
         }),
@@ -124,6 +140,8 @@ import * as authService from '../services/authService';
 import * as projectService from '../services/projectService';
 import * as authHooks from '../hooks/useAuth';
 
+
+
 describe('Vishwakarmans Integration Tests', () => {
   let queryClient;
 
@@ -138,6 +156,120 @@ describe('Vishwakarmans Integration Tests', () => {
     });
   });
 
+  test('Unapproved designer is redirected to Waitlist page by Approval Gate', async () => {
+    authHooks.useCurrentUser.mockReturnValue({
+      data: { id: 'unapproved-user-123', email: 'pending@example.com' },
+      isLoading: false,
+    });
+    authHooks.useUserProfile.mockReturnValue({
+      data: {
+        id: 'unapproved-user-123',
+        role: 'designer',
+        profile_completed: true,
+        status: 'pending',
+        designer: {
+          name: 'Pending Designer',
+          email: 'pending@example.com',
+          phone: '9876543210',
+          city: 'Hyderabad',
+          designer_type: 'interior',
+          experience_years: 5,
+          style_tags: ['Modern'],
+          about_text: 'This is a premium designer bio.',
+        }
+      },
+      isLoading: false,
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <Routes>
+            <Route element={<RequireDesigner />}>
+              <Route path="/dashboard" element={<div>Dashboard Content</div>} />
+            </Route>
+            <Route path="/waitlist" element={<Waitlist />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Application Under Review/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Sign Out/i })).toBeInTheDocument();
+    });
+  });
+
+  test('Unauthenticated guest visiting root route sees Unified Onboarding form', async () => {
+    authHooks.useCurrentUser.mockReturnValue({
+      data: null,
+      isLoading: false,
+    });
+    authHooks.useUserProfile.mockReturnValue({
+      data: null,
+      isLoading: false,
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/']}>
+          <Routes>
+            <Route element={<GuestRoute />}>
+              <Route path="/" element={<UnifiedOnboarding />} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Firm \/ Designer Name/i)).toBeInTheDocument();
+    });
+  });
+
+  test('Authenticated approved designer visiting root route is redirected to dashboard', async () => {
+    authHooks.useCurrentUser.mockReturnValue({
+      data: { id: 'designer-user-123', email: 'designer@example.com' },
+      isLoading: false,
+    });
+    authHooks.useUserProfile.mockReturnValue({
+      data: {
+        id: 'designer-user-123',
+        role: 'designer',
+        profile_completed: true,
+        status: 'approved',
+        designer: {
+          name: 'Verified Designer',
+          email: 'designer@example.com',
+          phone: '9876543210',
+          city: 'Hyderabad',
+          designer_type: 'interior',
+          experience_years: 5,
+          style_tags: ['Modern'],
+          about_text: 'Verified designer bio.',
+        }
+      },
+      isLoading: false,
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/']}>
+          <Routes>
+            <Route element={<GuestRoute />}>
+              <Route path="/" element={<UnifiedOnboarding />} />
+            </Route>
+            <Route path="/dashboard" element={<div>Designer Dashboard Page</div>} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Designer Dashboard Page/i)).toBeInTheDocument();
+    });
+  });
+
   test('Onboarding Guard redirects and form submission completes profile successfully', async () => {
     // 1. Mock auth hooks for incomplete profile
     authHooks.useCurrentUser.mockReturnValue({
@@ -145,20 +277,19 @@ describe('Vishwakarmans Integration Tests', () => {
       isLoading: false,
     });
     authHooks.useUserProfile.mockReturnValue({
-      data: { id: 'mock-user-123', profile_completed: false },
+      data: { id: 'mock-user-123', role: 'designer', profile_completed: false },
       isLoading: false,
     });
 
-    authService.updateUserProfile.mockResolvedValue({ success: true });
-
-    // 2. Render CompleteProfile inside Route structure
+    // 2. Render UnifiedOnboarding inside Route structure
     render(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={['/complete-profile']}>
+        <MemoryRouter initialEntries={['/onboarding']}>
           <Routes>
             <Route element={<RequireAuth />}>
-              <Route path="/complete-profile" element={<CompleteProfile />} />
+              <Route path="/onboarding" element={<UnifiedOnboarding />} />
             </Route>
+            <Route path="/waitlist" element={<Waitlist />} />
             <Route path="/" element={<div>Home Page Dashboard</div>} />
           </Routes>
         </MemoryRouter>
@@ -166,22 +297,25 @@ describe('Vishwakarmans Integration Tests', () => {
     );
 
     // 3. Verify onboarding form renders
-    expect(screen.getByText(/Complete your profile/i)).toBeInTheDocument();
+    await screen.findByText(/Firm \/ Designer Name/i);
 
-    const phoneInput = screen.getByPlaceholderText(/\+91 98765 43210/i);
-    const citySelect = screen.getByLabelText(/Current City/i);
-    const submitBtn = screen.getByRole('button', { name: /Explore Marketplace/i });
+    const nameInput = screen.getByPlaceholderText(/Studio Zen/i);
+    const phoneInput = screen.getByPlaceholderText(/9876543210/i);
+    const termsCheckbox = screen.getByRole('checkbox');
 
-    // 4. Fill in details and click submit
+    // 4. Fill form details
+    await userEvent.type(nameInput, 'Studio Zen Interior');
     await userEvent.type(phoneInput, '9876543210');
-    await userEvent.selectOptions(citySelect, 'Hyderabad');
+    await userEvent.click(termsCheckbox);
+
+    // Submit Application
+    const submitBtn = screen.getByRole('button', { name: /Submit Application/i });
     await userEvent.click(submitBtn);
 
-    // 5. Assert the update service is triggered
-    expect(authService.updateUserProfile).toHaveBeenCalledWith('mock-user-123', {
-      phone: '9876543210',
-      city: 'Hyderabad',
-      profile_completed: true,
+    // 5. Assert database interactions happened
+    await waitFor(() => {
+      expect(mockSupabaseClient.from).toHaveBeenCalledWith('designer_applications');
+      expect(mockSupabaseClient.from).toHaveBeenCalledWith('users');
     });
   });
 

@@ -3,7 +3,11 @@ import { signInWithGoogle } from "../services/authService";
 import { Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
 
-export const GoogleSignInButton = ({ label = "Continue with Google" }) => {
+export const GoogleSignInButton = ({
+  label = "Continue with Google",
+  className = "",
+  variant = "default",
+}) => {
   const [loading, setLoading] = useState(false);
 
   const handleGoogleSignIn = async () => {
@@ -17,18 +21,35 @@ export const GoogleSignInButton = ({ label = "Continue with Google" }) => {
     }
   };
 
+  const baseClasses =
+    "w-full py-3.5 px-4 rounded-xl font-bold transition-all duration-300 flex items-center justify-center gap-3 cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed hover:-translate-y-0.5 active:translate-y-0 shadow-sm";
+
+  const themeClasses =
+    variant === "dark"
+      ? "bg-slate-900 hover:bg-slate-800 border border-white/15 text-white"
+      : "bg-white hover:bg-slate-100 border border-gray-200 text-slate-900";
+
+  const combinedClasses = className
+    ? `${baseClasses} ${className}`
+    : `${baseClasses} ${themeClasses}`;
+
   return (
     <button
       type="button"
       onClick={handleGoogleSignIn}
       disabled={loading}
-      className="w-full py-3.5 px-4 bg-transparent border border-gray-200 hover:border-gray-900 text-gray-700 hover:text-gray-900 font-bold rounded-xl transition-all duration-300 flex items-center justify-center gap-3 cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed hover:-translate-y-0.5 active:translate-y-0"
+      className={combinedClasses}
     >
       {loading ? (
-        <Loader2 className="animate-spin h-5 w-5 text-gray-500" />
+        <Loader2 className="animate-spin h-5 w-5 text-gray-400" />
       ) : (
         <>
-          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <svg
+            className="h-5 w-5 flex-shrink-0"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
             <path
               d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
               fill="#4285F4"

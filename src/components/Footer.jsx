@@ -53,14 +53,14 @@ const Footer = () => {
               <ul className="space-y-3">
                 <li>
                   <Link
-                    to="/designers"
+                    to="/"
                     className="text-gray-500 hover:text-brand-accent font-medium text-sm transition-colors flex items-center gap-2 group"
                   >
                     <ArrowRight
                       size={14}
                       className="opacity-0 -ml-4 group-hover:opacity-100 group-hover:ml-0 transition-all text-brand-accent"
                     />{" "}
-                    Browse Designers
+                    Apply as Partner
                   </Link>
                 </li>
                 <li>

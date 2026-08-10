@@ -1,35 +1,31 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import ScrollToTop from "./components/ScrollToTop";
 import { Toaster } from "react-hot-toast";
 
 import React, { Suspense } from "react";
-import Home from "./pages/Home";
-import Designers from "./pages/Designers";
-import DesignerProfile from "./pages/DesignerProfile";
 import Login from "./pages/Login";
-import Register from "./pages/Register";
 import Connect from "./pages/Connect";
-import Collab from "./pages/Collab";
 import UserProfile from "./pages/UserProfile";
 import AboutContact from "./pages/AboutContact";
+import Faqs from "./pages/Faqs";
 import TermsOfServices from "./pages/TermsOfServices";
 import Privacy from "./pages/Privacy";
 import UpdatePassword from "./pages/UpdatePassword";
 import NotFound from "./pages/NotFound";
-import CompleteProfile from "./pages/complete-profile";
+import UnifiedOnboarding from "./pages/UnifiedOnboarding";
+import Waitlist from "./pages/Waitlist";
 
 import {
   RequireAuth,
   RequireGuest,
+  GuestRoute,
   RequireDesigner,
-  RequireAdmin,
   OnboardingGuard,
 } from "./components/AuthRoutes";
 
 const DesignerDashboard = React.lazy(() => import("./pages/DesignerDashboard"));
-const AdminDashboard = React.lazy(() => import("./pages/AdminDashboard"));
 
 const PageLoader = () => (
   <div className="min-h-[60vh] flex flex-col items-center justify-center">
@@ -53,51 +49,36 @@ function App() {
         }}
       />
       <Navbar />
-      <div className="pt-20">
+      <div className="pt-16 md:pt-20">
         <OnboardingGuard>
           <Routes>
-            {/* Public */}
-            <Route path="/" element={<Home />} />
-            <Route path="/designers" element={<Designers />} />
-            <Route path="/designers/:id" element={<DesignerProfile />} />
+            {/* Guest / Public Landing Routes */}
+            <Route element={<GuestRoute />}>
+              <Route path="/" element={<UnifiedOnboarding />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/onboarding" element={<UnifiedOnboarding />} />
+              <Route path="/register" element={<Navigate to="/onboarding" replace />} />
+            </Route>
+
+            {/* Public Information */}
             <Route path="/aboutcontact" element={<AboutContact />} />
+            <Route path="/faqs" element={<Faqs />} />
+            <Route path="/faq" element={<Faqs />} />
             <Route path="/terms" element={<TermsOfServices />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/update-password" element={<UpdatePassword />} />
-            <Route path="*" element={<NotFound />} />
-            <Route element={<RequireGuest />}>
-              <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
-            </Route>
 
             {/* Logged In Users */}
             <Route element={<RequireAuth />}>
-              <Route path="/complete-profile" element={<CompleteProfile />} />
+              <Route path="/onboarding" element={<UnifiedOnboarding />} />
+              <Route path="/collab" element={<Navigate to="/onboarding" replace />} />
+              <Route path="/complete-profile" element={<Navigate to="/onboarding" replace />} />
+              <Route path="/waitlist" element={<Waitlist />} />
               <Route path="/connect" element={<Connect />} />
               <Route path="/profile" element={<UserProfile />} />
-              <Route path="/collab" element={<Collab />} />
             </Route>
 
 
-            {/* === ADMIN ONLY === */}
-            <Route element={<RequireAdmin />}>
-              <Route 
-                path="/admin/manage-designer/:id" 
-                element={
-                  <Suspense fallback={<PageLoader />}>
-                    <DesignerDashboard />
-                  </Suspense>
-                } 
-              />
-              <Route 
-                path="/admin" 
-                element={
-                  <Suspense fallback={<PageLoader />}>
-                    <AdminDashboard />
-                  </Suspense>
-                } 
-              />
-            </Route>
 
             {/* === DESIGNERS ONLY === */}
             <Route element={<RequireDesigner />}>
@@ -110,6 +91,8 @@ function App() {
                 } 
               />
             </Route>
+
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </OnboardingGuard>
       </div>

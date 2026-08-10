@@ -32,54 +32,47 @@ const Navbar = () => {
     role === "admin"
       ? { text: "Admin Panel", path: "/admin", icon: <ShieldAlert size={18} /> }
       : role === "designer"
-      ? { text: "Dashboard", path: "/dashboard", icon: null }
-      : { text: "Designer? Collab with us", path: "/collab", icon: null };
+      ? { text: "Designer Dashboard", path: "/dashboard", icon: null }
+      : { text: "Designer? Join us", path: "/onboarding", icon: null };
 
   return (
     <nav className="bg-white/95 backdrop-blur-lg border-b border-gray-200 fixed w-full z-[100] top-0 shadow-sm transition-all">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-20">
+        <div className="flex items-center justify-between h-16 md:h-20">
           <Link to="/" className="flex items-center gap-3 group">
             <div className="w-10 h-10 bg-brand-accent rounded-xl flex items-center justify-center shadow-md group-hover:shadow-lg transition-all group-hover:-translate-y-0.5">
               <span className="text-white font-black text-xl">V</span>
             </div>
-            <span className="text-2xl font-black text-gray-900 tracking-tight group-hover:text-brand-accent transition-colors">
-              Vishwakarmans
-            </span>
+            <div className="flex flex-col items-end justify-center cursor-pointer">
+              <h1 className="text-xl md:text-2xl font-black text-gray-900 tracking-tight leading-none group-hover:text-brand-accent transition-colors">VISHWAKARMANS</h1>
+              <p className="text-[10px] font-extrabold text-orange-500 uppercase tracking-[0.3em] mt-0.5">Designers</p>
+            </div>
           </Link>
 
           <div className="hidden md:flex items-center space-x-8">
             <Link
-              to="/"
+              to="/aboutcontact#contact"
               className="text-gray-600 hover:text-brand-accent font-semibold transition-colors"
             >
-              Home
+              Contact Us
             </Link>
             <Link
-              to="/designers"
+              to="/faqs"
               className="text-gray-600 hover:text-brand-accent font-semibold transition-colors"
             >
-              Find Designers
+              FAQs
             </Link>
-            <Link
-              to="/connect"
-              className="text-gray-600 hover:text-brand-accent font-semibold transition-colors"
-            >
-              Connections
-            </Link>
-            <Link
-              to={actionLink.path}
-              className={`flex items-center gap-2 font-semibold transition-colors ${
-                role !== "client"
-                  ? "text-brand-accent"
-                  : "text-gray-600 hover:text-brand-accent"
-              }`}
-            >
-              {actionLink.icon} {actionLink.text}
-            </Link>
+            {role !== "client" && (
+              <Link
+                to={actionLink.path}
+                className="flex items-center gap-2 font-semibold text-brand-accent transition-colors"
+              >
+                {actionLink.icon} {actionLink.text}
+              </Link>
+            )}
             
             {loading ? (
-              <div className="flex items-center justify-center pl-6 border-l border-gray-200">
+              <div className="flex items-center justify-center pl-6">
                 <Loader2 className="animate-spin text-gray-300 w-5 h-5" />
               </div>
             ) : user ? (
@@ -103,16 +96,16 @@ const Navbar = () => {
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-4 pl-6 border-l border-gray-200">
+              <div className="flex items-center gap-3">
                 <Link
                   to="/login"
-                  className="text-gray-700 font-bold hover:text-brand-accent transition-colors"
+                  className="text-gray-700 hover:text-brand-accent font-bold px-4 py-2 rounded-xl border border-gray-200 hover:border-brand-accent/40 transition-all active:scale-95"
                 >
-                  Login
+                  Log In
                 </Link>
                 <Link
-                  to="/register"
-                  className="bg-brand-accent text-white px-5 py-2.5 rounded-xl font-bold hover:bg-orange-600 shadow-lg shadow-orange-500/20 transition-all active:scale-95"
+                  to="/onboarding"
+                  className="bg-brand-accent text-white px-5 py-2 rounded-xl font-bold hover:bg-orange-600 shadow-lg shadow-orange-500/20 transition-all active:scale-95"
                 >
                   Sign Up
                 </Link>
@@ -134,33 +127,28 @@ const Navbar = () => {
       {isOpen && (
         <div className="md:hidden bg-white border-t border-gray-200 p-4 space-y-4 animate-fade-in shadow-xl">
           <Link
-            to="/"
+            to="/aboutcontact#contact"
             onClick={() => setIsOpen(false)}
             className="block px-4 py-3 text-gray-900 font-semibold hover:bg-gray-50 hover:text-brand-accent rounded-xl"
           >
-            Home
+            Contact Us
           </Link>
           <Link
-            to="/designers"
+            to="/faqs"
             onClick={() => setIsOpen(false)}
             className="block px-4 py-3 text-gray-900 font-semibold hover:bg-gray-50 hover:text-brand-accent rounded-xl"
           >
-            Find Designers
+            FAQs
           </Link>
-          <Link
-            to="/connect"
-            onClick={() => setIsOpen(false)}
-            className="block px-4 py-3 text-gray-900 font-semibold hover:bg-gray-50 hover:text-brand-accent rounded-xl"
-          >
-            Connections
-          </Link>
-          <Link
-            to={actionLink.path}
-            onClick={() => setIsOpen(false)}
-            className="block px-4 py-3 text-brand-accent font-bold hover:bg-gray-50 rounded-xl"
-          >
-            {actionLink.text}
-          </Link>
+          {role !== "client" && (
+            <Link
+              to={actionLink.path}
+              onClick={() => setIsOpen(false)}
+              className="block px-4 py-3 text-brand-accent font-bold hover:bg-gray-50 rounded-xl"
+            >
+              {actionLink.text}
+            </Link>
+          )}
           <div className="border-t border-gray-200 pt-4 mt-2">
             {loading ? (
               <div className="flex justify-center py-2">
@@ -183,13 +171,22 @@ const Navbar = () => {
                 </button>
               </div>
             ) : (
-              <Link
-                to="/login"
-                onClick={() => setIsOpen(false)}
-                className="text-brand-accent block font-bold px-4 py-3 hover:bg-gray-50 rounded-xl"
-              >
-                Login / Sign Up
-              </Link>
+              <div className="flex flex-col gap-2 pt-1">
+                <Link
+                  to="/login"
+                  onClick={() => setIsOpen(false)}
+                  className="block text-center text-gray-700 hover:text-brand-accent font-bold px-4 py-2.5 border border-gray-200 rounded-xl transition-all"
+                >
+                  Log In
+                </Link>
+                <Link
+                  to="/onboarding"
+                  onClick={() => setIsOpen(false)}
+                  className="block text-center bg-brand-accent text-white font-bold px-4 py-2.5 rounded-xl hover:bg-orange-600 transition-all shadow-md"
+                >
+                  Sign Up
+                </Link>
+              </div>
             )}
           </div>
         </div>

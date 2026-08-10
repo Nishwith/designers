@@ -17,13 +17,25 @@ export const signInWithPassword = async (email, password) => {
 
 /** Email + password sign up with metadata. Returns { user, session }. */
 export const signUp = async (email, password, metadata = {}) => {
-  const { data, error } = await supabase.auth.signUp({
+  const { data: authData, error: authError } = await supabase.auth.signUp({
     email,
     password,
     options: { data: metadata },
   });
-  if (error) throw error;
-  return data;
+  if (authError) throw authError;
+
+  // Explicitly create the user record in public.users table
+  if (authData?.user) {
+    await supabase.from('users').insert({
+      id: authData.user.id,
+      email: authData.user.email,
+      full_name: metadata.name || metadata.fullName || metadata.full_name || '',
+      phone: metadata.phone || '',
+      role: 'designer', // Explicitly setting their role
+    });
+  }
+
+  return authData;
 };
 
 /** Google OAuth redirect. */
@@ -69,15 +81,32 @@ export const onAuthStateChange = (callback) => {
   return () => subscription.unsubscribe();
 };
 
-/** Fetch the public.users row for a given user id. */
+/** Fetch the public.users row for a given user id and join the designer profile. */
 export const getUserProfile = async (userId) => {
-  const { data, error } = await supabase
+  const { data: userProfile, error: userError } = await supabase
     .from('users')
     .select('*')
     .eq('id', userId)
     .single();
-  if (error) throw error;
-  return data;
+  if (userError) throw userError;
+
+  const { data: designerProfile } = await supabase
+    .from('designers')
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  const { data: appProfile } = await supabase
+    .from('designer_applications')
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  return {
+    ...userProfile,
+    designer: designerProfile,
+    application: appProfile,
+  };
 };
 
 /** Update the public.users row for a given user id. */

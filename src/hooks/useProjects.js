@@ -5,7 +5,6 @@ import {
   getProjectsByDesigner,
   getReviewsByDesigner,
   getConnection,
-  getMarketplaceFeed,
   createReview,
 } from '../services/projectService';
 
@@ -49,13 +48,7 @@ export const useConnection = (clientId, designerId) =>
     enabled: !!(clientId && designerId),
   });
 
-/** Materialized view marketplace feed. */
-export const useMarketplaceFeed = () =>
-  useQuery({
-    queryKey: ['marketplace', 'feed'],
-    queryFn: getMarketplaceFeed,
-    staleTime: 60 * 1000,
-  });
+
 
 /** Submit a review (mutation). Auto-invalidates reviews and designer cache. */
 export const useCreateReview = (designerId) => {

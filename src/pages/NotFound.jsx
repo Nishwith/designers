@@ -1,39 +1,58 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Home, AlertTriangle } from "lucide-react";
+import { Home, ArrowLeft } from "lucide-react";
 
 const NotFound = () => {
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 relative overflow-hidden">
-      {/* Background Decor */}
-      <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-brand-accent/10 rounded-full blur-[120px] pointer-events-none"></div>
-      <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-blue-600/10 rounded-full blur-[120px] pointer-events-none"></div>
-
-      <div className="text-center relative z-10 max-w-lg">
-        {/* Icon */}
-        <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-white/50 border border-gray-100 mb-8 shadow-2xl animate-bounce-slow">
-          <AlertTriangle className="text-brand-accent" size={48} />
+    <div className="h-[calc(100vh-4rem)] md:h-[calc(100vh-5rem)] w-full flex flex-col md:flex-row bg-white overflow-hidden">
+      {/* Left side: Premium dark panel */}
+      <div className="hidden md:flex md:w-1/2 h-full bg-slate-950 relative items-center justify-center p-16">
+        <div className="absolute inset-0 bg-gradient-to-br from-brand-accent/10 to-slate-950/95"></div>
+        <div className="relative z-10 text-center space-y-6">
+          <h1 className="text-[12rem] font-black text-white/5 leading-none tracking-tighter select-none">
+            404
+          </h1>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-8xl font-black text-brand-accent tracking-tighter">
+              4<span className="text-white">0</span>4
+            </span>
+          </div>
         </div>
+      </div>
 
-        {/* Text */}
-        <h1 className="text-8xl font-black text-gray-900 mb-4 tracking-tighter">
-          4<span className="text-brand-accent">0</span>4
-        </h1>
-        <h2 className="text-2xl font-bold text-gray-600 mb-4">
-          Page Not Found
-        </h2>
-        <p className="text-gray-500 mb-8 leading-relaxed">
-          The page you are looking for might have been removed, had its name
-          changed, or is temporarily unavailable.
-        </p>
+      {/* Right side: Content */}
+      <div className="w-full md:w-1/2 h-full overflow-y-auto flex items-center justify-center p-8 md:p-20 lg:p-28 bg-white scrollbar-hide">
+        <div className="w-full max-w-lg space-y-8 animate-slide-up">
+          <div className="md:hidden text-center mb-4">
+            <span className="text-7xl font-black text-gray-900 tracking-tighter">
+              4<span className="text-brand-accent">0</span>4
+            </span>
+          </div>
 
-        {/* Action Button */}
-        <Link
-          to="/"
-          className="inline-flex items-center gap-2 bg-brand-accent hover:bg-orange-600 text-white font-bold py-3.5 px-8 rounded-xl shadow-lg shadow-orange-900/20 transition-all active:scale-95"
-        >
-          <Home size={20} /> Back to Home
-        </Link>
+          <div className="space-y-4">
+            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 tracking-tight font-heading">
+              Page not found
+            </h2>
+            <p className="text-gray-500 font-sans font-light text-lg leading-relaxed">
+              The page you're looking for doesn't exist or has been moved. Let's get you back on track.
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-4 pt-4">
+            <Link
+              to="/"
+              className="group relative inline-flex items-center justify-center gap-3 py-4 px-8 bg-gray-900 hover:bg-brand-accent text-white font-bold rounded-2xl transition-all duration-500 shadow-xl hover:shadow-brand-accent/25 hover:-translate-y-0.5"
+            >
+              <Home size={20} /> Take me home
+            </Link>
+            <button
+              onClick={() => window.history.back()}
+              className="inline-flex items-center justify-center gap-3 py-4 px-8 bg-gray-50 hover:bg-gray-100 text-gray-700 font-bold rounded-2xl transition-all border border-gray-200"
+            >
+              <ArrowLeft size={20} /> Go back
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
