@@ -20,18 +20,21 @@ export const signUp = async (email, password, metadata = {}) => {
   const { data: authData, error: authError } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: metadata },
+    options: {
+      data: metadata,
+      emailRedirectTo: `${window.location.origin}/onboarding`,
+    },
   });
   if (authError) throw authError;
 
   // Explicitly create the user record in public.users table
   if (authData?.user) {
-    await supabase.from('users').insert({
+    await supabase.from('users').upsert({
       id: authData.user.id,
       email: authData.user.email,
-      full_name: metadata.name || metadata.fullName || metadata.full_name || '',
+      full_name: metadata.fullName || metadata.full_name || metadata.name || '',
       phone: metadata.phone || '',
-      role: 'designer', // Explicitly setting their role
+      role: 'designer',
     });
   }
 
