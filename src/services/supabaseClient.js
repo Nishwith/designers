@@ -1,4 +1,2 @@
-import { createClient } from '@supabase/supabase-js';
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config';
-
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Backward-compatible service import; every module shares the root client.
+export { supabase } from "../supabaseClient";

@@ -40,13 +40,7 @@ const Navbar = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 md:h-20">
           <Link to="/" className="flex items-center gap-3 group">
-            <div className="w-10 h-10 bg-brand-accent rounded-xl flex items-center justify-center shadow-md group-hover:shadow-lg transition-all group-hover:-translate-y-0.5">
-              <span className="text-white font-black text-xl">V</span>
-            </div>
-            <div className="flex flex-col items-end justify-center cursor-pointer">
-              <h1 className="text-xl md:text-2xl font-black text-gray-900 tracking-tight leading-none group-hover:text-brand-accent transition-colors">VISHWAKARMANS</h1>
-              <p className="text-[10px] font-extrabold text-orange-500 uppercase tracking-[0.3em] mt-0.5">Designers</p>
-            </div>
+            <img src="/logo.png" alt="Vishwakarmans Logo" className="h-8 md:h-10 w-auto object-contain" />
           </Link>
 
           <div className="hidden md:flex items-center space-x-8">
@@ -116,6 +110,7 @@ const Navbar = () => {
           <div className="md:hidden">
             <button
               onClick={() => setIsOpen(!isOpen)}
+              aria-label={isOpen ? "Close navigation menu" : "Open navigation menu"}
               className="text-gray-900 p-2 focus:outline-none"
             >
               {isOpen ? <X size={28} /> : <Menu size={28} />}

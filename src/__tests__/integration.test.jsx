@@ -136,8 +136,6 @@ vi.mock('../services/supabaseClient', () => ({
   supabase: mockSupabaseClient,
 }));
 
-import * as authService from '../services/authService';
-import * as projectService from '../services/projectService';
 import * as authHooks from '../hooks/useAuth';
 
 
@@ -166,7 +164,7 @@ describe('Vishwakarmans Integration Tests', () => {
         id: 'unapproved-user-123',
         role: 'designer',
         profile_completed: true,
-        status: 'pending',
+        application: { status: 'pending' },
         designer: {
           name: 'Pending Designer',
           email: 'pending@example.com',
@@ -237,8 +235,10 @@ describe('Vishwakarmans Integration Tests', () => {
         id: 'designer-user-123',
         role: 'designer',
         profile_completed: true,
-        status: 'approved',
+        application: { status: 'approved' },
         designer: {
+          is_verified: true,
+          projects_completed: 12,
           name: 'Verified Designer',
           email: 'designer@example.com',
           phone: '9876543210',
@@ -376,4 +376,101 @@ describe('Vishwakarmans Integration Tests', () => {
       expect(mockSupabaseClient.from).toHaveBeenCalledWith('designer_projects');
     });
   });
+
+  test('Designer can set service area location via geolocation', async () => {
+    authHooks.useCurrentUser.mockReturnValue({
+      data: { id: 'designer-user-123', email: 'designer@example.com' },
+      isLoading: false,
+    });
+    authHooks.useUserProfile.mockReturnValue({
+      data: { id: 'designer-user-123', role: 'designer', profile_completed: true },
+      isLoading: false,
+    });
+
+    const mockGetCurrentPosition = vi.fn((success) => {
+      success({
+        coords: {
+          latitude: 17.385,
+          longitude: 78.4867,
+        },
+      });
+    });
+
+    Object.defineProperty(globalThis.navigator, 'geolocation', {
+      value: {
+        getCurrentPosition: mockGetCurrentPosition,
+      },
+      configurable: true,
+      writable: true,
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <DesignerDashboard />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    await screen.findByText(/Verified Partner/i);
+
+    const profileNavBtns = screen.getAllByRole('button', { name: /Profile/i });
+    await userEvent.click(profileNavBtns[0]);
+
+    const setLocationBtn = screen.getByRole('button', { name: /Set My Service Area/i });
+    expect(setLocationBtn).toBeInTheDocument();
+
+    await userEvent.click(setLocationBtn);
+
+    expect(mockGetCurrentPosition).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(mockSupabaseClient.from).toHaveBeenCalledWith('users');
+    });
+  });
+
+  test('Shows error toast when location permission is denied', async () => {
+    authHooks.useCurrentUser.mockReturnValue({
+      data: { id: 'designer-user-123', email: 'designer@example.com' },
+      isLoading: false,
+    });
+    authHooks.useUserProfile.mockReturnValue({
+      data: { id: 'designer-user-123', role: 'designer', profile_completed: true },
+      isLoading: false,
+    });
+
+    const mockGetCurrentPosition = vi.fn((success, error) => {
+      error({
+        code: 1,
+        PERMISSION_DENIED: 1,
+        message: 'User denied Geolocation',
+      });
+    });
+
+    Object.defineProperty(globalThis.navigator, 'geolocation', {
+      value: {
+        getCurrentPosition: mockGetCurrentPosition,
+      },
+      configurable: true,
+      writable: true,
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <DesignerDashboard />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+
+    await screen.findByText(/Verified Partner/i);
+
+    const profileNavBtns = screen.getAllByRole('button', { name: /Profile/i });
+    await userEvent.click(profileNavBtns[0]);
+
+    const setLocationBtn = screen.getByRole('button', { name: /Set My Service Area/i });
+    await userEvent.click(setLocationBtn);
+
+    expect(mockGetCurrentPosition).toHaveBeenCalled();
+  });
 });
+

@@ -8,7 +8,7 @@ import React, { Suspense } from "react";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Connect from "./pages/Connect";
-import UserProfile from "./pages/UserProfile";
+import ProfileRoute from "./pages/ProfileRoute";
 import AboutContact from "./pages/AboutContact";
 import Faqs from "./pages/Faqs";
 import TermsOfServices from "./pages/TermsOfServices";
@@ -27,6 +27,7 @@ import {
 } from "./components/AuthRoutes";
 
 const DesignerDashboard = React.lazy(() => import("./pages/DesignerDashboard"));
+const DesignerProfileCompletion = React.lazy(() => import("./pages/DesignerProfileCompletion"));
 
 const PageLoader = () => (
   <div className="min-h-[60vh] flex flex-col items-center justify-center">
@@ -73,10 +74,17 @@ function App() {
             <Route element={<RequireAuth />}>
               <Route path="/onboarding" element={<UnifiedOnboarding />} />
               <Route path="/collab" element={<Navigate to="/onboarding" replace />} />
-              <Route path="/complete-profile" element={<Navigate to="/onboarding" replace />} />
+              <Route
+                path="/complete-profile"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <DesignerProfileCompletion />
+                  </Suspense>
+                }
+              />
               <Route path="/waitlist" element={<Waitlist />} />
               <Route path="/connect" element={<Connect />} />
-              <Route path="/profile" element={<UserProfile />} />
+              <Route path="/profile" element={<ProfileRoute />} />
             </Route>
 
 

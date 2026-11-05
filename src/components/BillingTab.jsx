@@ -19,6 +19,7 @@ const BillingTab = ({ designer, onRequestRenewal, onRequestFeature, onCheckout, 
           text: shareText,
         });
       } catch (err) {
+        if (err?.name !== 'AbortError') console.error('Share action failed:', err);
         console.log('Share dismissed');
       }
     } else {
@@ -52,7 +53,13 @@ const BillingTab = ({ designer, onRequestRenewal, onRequestFeature, onCheckout, 
     const diff = new Date(designer.subscription_end) - new Date();
     daysLeft = Math.ceil(diff / (1000 * 60 * 60 * 24));
   }
-  const isExpired = designer?.is_subscription_active === false || (designer?.subscription_end && daysLeft < 0);
+  const isPendingPayment =
+    designer?.is_verified === true &&
+    designer?.is_subscription_active === false &&
+    !designer?.subscription_end;
+  const isExpired = !isPendingPayment && (
+    designer?.is_subscription_active === false || (designer?.subscription_end && daysLeft < 0)
+  );
 
   const formatDate = (dateStr) => {
     if (!dateStr) return "N/A";
@@ -104,12 +111,22 @@ const BillingTab = ({ designer, onRequestRenewal, onRequestFeature, onCheckout, 
               </span>
               <span
                 className={`text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wider border ${
-                  isExpired
+                  designer?.is_verified !== true
+                    ? "bg-amber-50 text-amber-700 border-amber-200"
+                    : isPendingPayment
+                    ? "bg-blue-50 text-blue-700 border-blue-200"
+                    : isExpired
                     ? "bg-red-50 text-red-700 border-red-200"
                     : "bg-emerald-50 text-emerald-700 border-emerald-200"
                 }`}
               >
-                {isExpired ? "Expired" : "Active License"}
+                {designer?.is_verified !== true
+                  ? "Awaiting Verification"
+                  : isPendingPayment
+                  ? "Payment Required"
+                  : isExpired
+                  ? "Expired"
+                  : "Active License"}
               </span>
             </div>
 
@@ -136,9 +153,14 @@ const BillingTab = ({ designer, onRequestRenewal, onRequestFeature, onCheckout, 
 
           <button
             onClick={handleRenewClick}
+            disabled={designer?.is_verified !== true}
             className="w-full py-3.5 bg-gray-900 hover:bg-black text-white font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
           >
-            Renew / Upgrade License <ArrowUpRight size={16} />
+            {designer?.is_verified !== true
+              ? "Available after profile verification"
+              : isPendingPayment
+              ? "Pay Now"
+              : "Renew / Upgrade License"} {designer?.is_verified === true && <ArrowUpRight size={16} />}
           </button>
         </div>
 

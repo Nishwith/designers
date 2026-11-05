@@ -54,8 +54,8 @@ const UnifiedOnboarding = () => {
           }));
         }
 
-        if (userRole?.role === "admin" || userRole?.role === "designer") {
-          toast.error("You are already a registered partner.");
+        if (userRole?.role === "admin") {
+          toast.error("Admins cannot submit a designer application.");
           if (isMounted.current) navigate("/");
           return;
         }
@@ -171,9 +171,9 @@ const UnifiedOnboarding = () => {
           </p>
         </div>
 
-        <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-2xl animate-fade-in max-w-2xl mx-auto">
+        <div className="bg-white border border-gray-200 rounded-2xl p-6 sm:p-8 shadow-2xl animate-fade-in max-w-2xl mx-auto">
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
               
               {/* Firm Name - Full Width */}
               <div className="md:col-span-2">
@@ -181,7 +181,7 @@ const UnifiedOnboarding = () => {
                   Firm / Designer Name
                 </label>
                 <div className="relative">
-                  <Building2 className="absolute left-3 top-4 text-gray-500" size={18} />
+                  <Building2 className="absolute left-3.5 top-3.5 text-gray-500" size={18} />
                   <input
                     type="text"
                     name="orgName"
@@ -189,7 +189,7 @@ const UnifiedOnboarding = () => {
                     onChange={handleChange}
                     required
                     placeholder="e.g., Studio Zen"
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-10 pr-4 text-gray-900 focus:border-brand-accent focus:outline-none transition-colors"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl min-h-[48px] h-12 pl-10 pr-4 text-gray-900 focus:border-brand-accent focus:outline-none transition-colors"
                   />
                 </div>
               </div>
@@ -200,12 +200,12 @@ const UnifiedOnboarding = () => {
                   City
                 </label>
                 <div className="relative">
-                  <MapPin className="absolute left-3 top-4 text-gray-500" size={18} />
+                  <MapPin className="absolute left-3.5 top-3.5 text-gray-500" size={18} />
                   <select
                     name="city"
                     value={formData.city}
                     onChange={handleChange}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-10 pr-4 text-gray-900 focus:border-brand-accent focus:outline-none appearance-none cursor-pointer"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl min-h-[48px] h-12 pl-10 pr-4 text-gray-900 focus:border-brand-accent focus:outline-none appearance-none cursor-pointer"
                   >
                     <option value="Hyderabad">Hyderabad</option>
                     <option value="Mumbai">Mumbai</option>
@@ -225,14 +225,14 @@ const UnifiedOnboarding = () => {
                     Specify City
                   </label>
                   <div className="relative">
-                    <MapPin className="absolute left-3 top-4 text-brand-accent" size={18} />
+                    <MapPin className="absolute left-3.5 top-3.5 text-brand-accent" size={18} />
                     <input
                       type="text"
                       required
                       placeholder="Type your city..."
                       value={customCity}
                       onChange={(e) => setCustomCity(e.target.value)}
-                      className="w-full bg-gray-50 border border-brand-accent rounded-xl py-3 pl-10 pr-4 text-gray-900 focus:outline-none transition-colors"
+                      className="w-full bg-gray-50 border border-brand-accent rounded-xl min-h-[48px] h-12 pl-10 pr-4 text-gray-900 focus:outline-none transition-colors"
                     />
                   </div>
                 </div>
@@ -244,7 +244,7 @@ const UnifiedOnboarding = () => {
                   Business Phone
                 </label>
                 <div className="relative">
-                  <Phone className="absolute left-3 top-4 text-gray-500" size={18} />
+                  <Phone className="absolute left-3.5 top-3.5 text-gray-500" size={18} />
                   <input
                     type="tel"
                     name="phone"
@@ -252,7 +252,7 @@ const UnifiedOnboarding = () => {
                     onChange={handleChange}
                     required
                     placeholder="9876543210"
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-10 pr-4 text-gray-900 focus:border-brand-accent focus:outline-none transition-colors"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl min-h-[48px] h-12 pl-10 pr-4 text-gray-900 focus:border-brand-accent focus:outline-none transition-colors"
                   />
                 </div>
               </div>
@@ -263,12 +263,12 @@ const UnifiedOnboarding = () => {
                   Specialization
                 </label>
                 <div className="relative">
-                  <Briefcase className="absolute left-3 top-4 text-gray-500" size={18} />
+                  <Briefcase className="absolute left-3.5 top-3.5 text-gray-500" size={18} />
                   <select
                     name="designerType"
                     value={formData.designerType}
                     onChange={handleChange}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-10 pr-4 text-gray-900 focus:border-brand-accent focus:outline-none appearance-none cursor-pointer"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl min-h-[48px] h-12 pl-10 pr-4 text-gray-900 focus:border-brand-accent focus:outline-none appearance-none cursor-pointer"
                   >
                     <option value="interior">Interior Design</option>
                     <option value="commercial">Commercial Design</option>
@@ -305,7 +305,7 @@ const UnifiedOnboarding = () => {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full py-4 bg-brand-accent hover:bg-orange-600 text-white font-bold rounded-xl shadow-lg shadow-brand-accent/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed hover:-translate-y-0.5"
+                className="w-full min-h-[48px] h-12 bg-brand-accent hover:bg-orange-600 text-white font-bold rounded-xl shadow-lg shadow-brand-accent/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed hover:-translate-y-0.5"
               >
                 {submitting ? (
                   <Loader2 className="animate-spin h-5 w-5" />

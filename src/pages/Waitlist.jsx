@@ -1,36 +1,77 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Clock, Hourglass, LogOut } from "lucide-react";
 import { signOut } from "../services/authService";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../supabaseClient";
+import {
+  getDesignerAccountDestination,
+  getDesignerAccountState,
+} from "../utils/designerApproval";
 
 const Waitlist = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [accountState, setAccountState] = useState("pending");
+  const [refreshFailed, setRefreshFailed] = useState(false);
 
   useEffect(() => {
+    let isActive = true;
     const checkStatus = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (user) {
-        const { data: designer } = await supabase
-          .from("designers")
-          .select("is_verified")
-          .eq("user_id", user.id)
-          .maybeSingle();
+      try {
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+        if (authError) throw authError;
+        if (!user || !isActive) return;
 
-        if (designer?.is_verified) {
-          window.location.href = "/dashboard";
+        const [designerResult, applicationResult] = await Promise.all([
+          supabase
+            .from("designers")
+            .select("id, user_id, is_verified, projects_completed, about_text")
+            .eq("user_id", user.id)
+            .maybeSingle(),
+          supabase
+            .from("designer_applications")
+            .select("status")
+            .eq("user_id", user.id)
+            .maybeSingle(),
+        ]);
+
+        if (designerResult.error) throw designerResult.error;
+        if (applicationResult.error) throw applicationResult.error;
+        if (!isActive) return;
+
+        setRefreshFailed(false);
+        const designer = designerResult.data;
+        const application = applicationResult.data;
+        const profile = { role: "designer", designer, application };
+        const nextAccountState = getDesignerAccountState(user, profile);
+        setAccountState(nextAccountState);
+        queryClient.setQueryData(["users", user.id], (currentProfile) => ({
+          ...(currentProfile || {}),
+          role: currentProfile?.role || "designer",
+          designer,
+          application,
+        }));
+
+        if (["approved", "profile-review"].includes(nextAccountState)) {
+          navigate(getDesignerAccountDestination(nextAccountState), { replace: true });
         }
+      } catch (error) {
+        console.error("Failed to refresh designer approval state:", error);
+        if (isActive) setRefreshFailed(true);
       }
     };
 
     checkStatus();
     const interval = setInterval(checkStatus, 5000);
-    return () => clearInterval(interval);
-  }, []);
+    return () => {
+      isActive = false;
+      clearInterval(interval);
+    };
+  }, [navigate, queryClient]);
 
   const handleLogout = async () => {
     try {
@@ -75,17 +116,25 @@ const Waitlist = () => {
         {/* Text Content */}
         <div className="space-y-3">
           <h1 className="text-3xl md:text-4xl font-black tracking-tight text-white font-heading">
-            Application Under Review
+            {accountState === "review"
+              ? "Application Status Needs Review"
+              : "Application Under Review"}
           </h1>
           <p className="text-gray-300 text-sm md:text-base leading-relaxed">
-            Our curation team is currently evaluating your design portfolio and credentials to ensure quality standards across our network.
+            {refreshFailed
+              ? "We could not refresh your account status. We will retry automatically."
+              : accountState === "review"
+              ? "Your application is not approved for dashboard access. Contact the team if you need help with its status."
+              : "Our curation team is currently evaluating your design portfolio and credentials to ensure quality standards across our network."}
           </p>
         </div>
 
         {/* Status Badge */}
         <div className="inline-flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 px-4 py-2 rounded-full text-xs font-bold text-amber-400 uppercase tracking-widest">
           <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
-          Pending Approval
+          {accountState === "review"
+            ? "Restricted"
+            : "Pending Approval"}
         </div>
 
         {/* Secondary Sign Out Button */}

@@ -93,17 +93,19 @@ export const getUserProfile = async (userId) => {
     .single();
   if (userError) throw userError;
 
-  const { data: designerProfile } = await supabase
+  const { data: designerProfile, error: designerError } = await supabase
     .from('designers')
     .select('*')
     .eq('user_id', userId)
     .maybeSingle();
+  if (designerError) throw designerError;
 
-  const { data: appProfile } = await supabase
+  const { data: appProfile, error: applicationError } = await supabase
     .from('designer_applications')
     .select('*')
     .eq('user_id', userId)
     .maybeSingle();
+  if (applicationError) throw applicationError;
 
   return {
     ...userProfile,

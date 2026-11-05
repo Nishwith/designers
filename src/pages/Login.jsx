@@ -82,6 +82,9 @@ const Login = () => {
       {/* Right side: Borderless form */}
       <div className="w-full md:w-1/2 h-full overflow-y-auto flex flex-col px-6 md:px-12 xl:px-20 bg-white scrollbar-hide">
         <div className="m-auto w-full max-w-md space-y-6 animate-slide-up">
+          <div className="flex justify-center md:justify-start mb-2">
+            <img src="/logo.png" alt="Vishwakarmans Logo" className="h-8 md:h-10 w-auto object-contain" />
+          </div>
           <div className="space-y-2">
             <h2 className="text-4xl font-bold text-gray-900 tracking-tight font-heading">
               {isResetMode ? "Reset Password" : "Sign In"}

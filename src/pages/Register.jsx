@@ -75,6 +75,9 @@ const Register = () => {
       {/* Right Form */}
       <div className="w-full md:w-1/2 h-full overflow-y-auto flex flex-col px-6 md:px-12 xl:px-20 bg-white scrollbar-hide py-2">
         <div className="m-auto w-full max-w-md space-y-6 animate-slide-up">
+          <div className="flex justify-center md:justify-start mb-2">
+            <img src="/logo.png" alt="Vishwakarmans Logo" className="h-8 md:h-10 w-auto object-contain" />
+          </div>
           <div className="space-y-2">
             <h2 className="text-4xl font-bold text-gray-900 tracking-tight font-heading">
               Create Partner Account
@@ -100,7 +103,7 @@ const Register = () => {
               <div className="flex items-center">
                 <User className="h-5 w-5 text-gray-300 group-focus-within:text-brand-accent transition-colors duration-500 mr-3" />
                 <input type="text" name="fullName" value={formData.fullName} onChange={handleChange}
-                  className="block w-full py-1.5 bg-transparent text-gray-900 placeholder-gray-300 text-base font-sans border-none outline-none focus:ring-0"
+                  className="block w-full py-2.5 min-h-[44px] bg-transparent text-gray-900 placeholder-gray-300 text-base font-sans border-none outline-none focus:ring-0"
                   placeholder="John Doe" required />
               </div>
             </div>
@@ -111,7 +114,7 @@ const Register = () => {
               <div className="flex items-center">
                 <Mail className="h-5 w-5 text-gray-300 group-focus-within:text-brand-accent transition-colors duration-500 mr-3" />
                 <input type="email" name="email" value={formData.email} onChange={handleChange}
-                  className="block w-full py-1.5 bg-transparent text-gray-900 placeholder-gray-300 text-base font-sans border-none outline-none focus:ring-0"
+                  className="block w-full py-2.5 min-h-[44px] bg-transparent text-gray-900 placeholder-gray-300 text-base font-sans border-none outline-none focus:ring-0"
                   placeholder="name@example.com" required />
               </div>
             </div>
@@ -122,7 +125,7 @@ const Register = () => {
               <div className="flex items-center">
                 <Lock className="h-5 w-5 text-gray-300 group-focus-within:text-brand-accent transition-colors duration-500 mr-3" />
                 <input type={showPassword ? "text" : "password"} name="password" value={formData.password} onChange={handleChange}
-                  className="block w-full py-1.5 bg-transparent text-gray-900 placeholder-gray-300 text-base font-sans border-none outline-none focus:ring-0"
+                  className="block w-full py-2.5 min-h-[44px] bg-transparent text-gray-900 placeholder-gray-300 text-base font-sans border-none outline-none focus:ring-0"
                   placeholder="••••••••" required />
                 <button type="button" onClick={() => setShowPassword(!showPassword)}
                   className="text-gray-400 hover:text-gray-900 transition-colors ml-2 cursor-pointer">
@@ -133,7 +136,7 @@ const Register = () => {
 
             <div className="pt-2">
               <button disabled={loading}
-                className="group relative w-full py-4 bg-gray-900 hover:bg-brand-accent text-white font-bold rounded-2xl transition-all duration-500 flex items-center justify-center gap-3 cursor-pointer shadow-xl shadow-slate-900/5 hover:shadow-brand-accent/25 hover:-translate-y-0.5 disabled:opacity-75">
+                className="group relative w-full min-h-[48px] h-12 bg-gray-900 hover:bg-brand-accent text-white font-bold rounded-2xl transition-all duration-500 flex items-center justify-center gap-3 cursor-pointer shadow-xl shadow-slate-900/5 hover:shadow-brand-accent/25 hover:-translate-y-0.5 disabled:opacity-75">
                 {loading ? <Loader2 className="animate-spin h-5 w-5" /> : "Create Account"}
               </button>
             </div>

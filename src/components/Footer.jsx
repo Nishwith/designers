@@ -19,12 +19,7 @@ const Footer = () => {
           {/* 1. BRAND & SOCIALS (Span 5) */}
           <div className="lg:col-span-5 space-y-6">
             <Link to="/" className="flex items-center gap-3 group w-fit">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-accent shadow-lg shadow-orange-500/20 group-hover:scale-105 transition-transform">
-                <span className="text-2xl font-black text-white">V</span>
-              </div>
-              <span className="text-3xl font-black tracking-tight text-gray-900 group-hover:text-brand-accent transition-colors">
-                Vishwakarmans
-              </span>
+              <img src="/logo.png" alt="Vishwakarmans Logo" className="h-8 md:h-10 w-auto object-contain" />
             </Link>
             <p className="text-gray-500 font-medium leading-relaxed max-w-md text-base">
               Connecting discerning homeowners with elite interior and exterior

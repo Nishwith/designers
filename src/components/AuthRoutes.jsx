@@ -4,6 +4,11 @@ import { useCurrentUser, useUserProfile } from "../hooks/useAuth";
 import { supabase } from "../supabaseClient";
 import toast from "react-hot-toast";
 import { Loader2 } from "lucide-react";
+import {
+  getDesignerAccountDestination,
+  getDesignerAccountState,
+  isApproved,
+} from "../utils/designerApproval";
 
 // Full-screen branded loading spinner to prevent session flicker (FOUC)
 const LoadingScreen = () => (
@@ -17,46 +22,16 @@ const LoadingScreen = () => (
   </div>
 );
 
-// Helper function to check if a route is whitelisted (excludes it from onboarding & waitlist redirects)
-const isWhitelisted = (pathname) => {
-  const whitelist = [
-    "/onboarding",
-    "/login",
-    "/update-password",
-    "/waitlist",
-    "/contact",
-    "/faq",
-    "/faqs",
-    "/aboutcontact",
-    "/help",
-    "/terms",
-    "/privacy",
-    "/settings",
-    "/profile",
-  ];
-  return whitelist.some((path) => pathname.includes(path));
-};
+const SUPPORT_PATHS = new Set([
+  "/aboutcontact",
+  "/faqs",
+  "/faq",
+  "/terms",
+  "/privacy",
+  "/update-password",
+]);
 
-// Helper function to check if designer profile is approved
-export const isApproved = (profile) => {
-  if (!profile) return false;
-  if (!profile.designer) return false;
-  if (
-    profile?.application?.status === "pending" ||
-    profile?.status === "pending" ||
-    profile?.designer?.status === "pending" ||
-    profile?.is_approved === false
-  ) {
-    return false;
-  }
-  if (profile.designer || profile.status === "approved" || profile.is_approved === true) {
-    return true;
-  }
-  return false;
-};
-
-// Helper function to check if designer profile is fully completed
-export const isDesignerProfileComplete = (profile) => !!profile?.application || !!profile?.designer;
+const isSupportPath = (pathname) => SUPPORT_PATHS.has(pathname);
 
 // Custom hook to reject non-designer users immediately
 const useBouncer = (user, profile) => {
@@ -68,7 +43,11 @@ const useBouncer = (user, profile) => {
     if (isUnauthorized) {
       const performSignOut = async () => {
         if (typeof supabase?.auth?.signOut === "function") {
-          try { await supabase.auth.signOut(); } catch {}
+          try {
+            await supabase.auth.signOut();
+          } catch (error) {
+            console.error("Failed to sign out unauthorized user:", error);
+          }
         }
         toast.error("Unauthorized: This portal is strictly for verified Designers");
       };
@@ -95,22 +74,29 @@ export const RequireAuth = () => {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Step 2: Onboarding check
-  const hasCompletedProfile = isDesignerProfileComplete(profile);
-  if (!hasCompletedProfile) {
-    if (location.pathname !== "/onboarding") {
-      return <Navigate to="/onboarding" replace />;
-    }
+  const state = getDesignerAccountState(user, profile);
+  const destination = getDesignerAccountDestination(state);
+
+  if (location.pathname === "/profile") {
+    if (state === "onboarding") return <Navigate to={destination} replace />;
     return <Outlet />;
   }
-
-  // Step 3: Approval check
-  const approved = isApproved(profile);
-  if (!approved) {
-    if (location.pathname !== "/waitlist") {
-      return <Navigate to="/waitlist" replace />;
-    }
+  if (location.pathname === "/complete-profile") {
+    if (state === "profile-incomplete") return <Outlet />;
+    return <Navigate to={destination} replace />;
+  }
+  if (location.pathname === "/onboarding" && state === "onboarding") return <Outlet />;
+  if (
+    location.pathname === "/waitlist" &&
+    ["pending", "review"].includes(state)
+  ) {
     return <Outlet />;
+  }
+  if (!["approved", "profile-review"].includes(state) || !isApproved(profile)) {
+    return <Navigate to={destination} replace />;
+  }
+  if (["/onboarding", "/waitlist"].includes(location.pathname)) {
+    return <Navigate to={destination} replace />;
   }
 
   return <Outlet />;
@@ -120,7 +106,6 @@ export const RequireAuth = () => {
 export const GuestRoute = ({ children }) => {
   const { data: user, isLoading: userLoading } = useCurrentUser();
   const { data: profile, isLoading: profileLoading } = useUserProfile(user?.id);
-  const location = useLocation();
   const isUnauthorizedRole = useBouncer(user, profile);
 
   if (userLoading || (user && profileLoading)) {
@@ -132,26 +117,8 @@ export const GuestRoute = ({ children }) => {
     return children ? children : <Outlet />;
   }
 
-  // Step 2: Onboarding check for logged in user
-  const hasCompletedProfile = isDesignerProfileComplete(profile);
-  if (!hasCompletedProfile) {
-    if (location.pathname === "/onboarding") {
-      return children ? children : <Outlet />;
-    }
-    return <Navigate to="/onboarding" replace />;
-  }
-
-  // Step 3: Approval check for completed profile
-  const approved = isApproved(profile);
-  if (!approved) {
-    if (location.pathname === "/waitlist") {
-      return children ? children : <Outlet />;
-    }
-    return <Navigate to="/waitlist" replace />;
-  }
-
-  // Authenticated & Approved -> go to dashboard
-  return <Navigate to="/dashboard" replace />;
+  const state = getDesignerAccountState(user, profile);
+  return <Navigate to={getDesignerAccountDestination(state)} replace />;
 };
 
 export const RequireGuest = GuestRoute;
@@ -172,16 +139,9 @@ export const RequireDesigner = () => {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Step 2: Onboarding check
-  const hasCompletedProfile = isDesignerProfileComplete(profile);
-  if (!hasCompletedProfile) {
-    return <Navigate to="/onboarding" replace />;
-  }
-
-  // Step 3: Approval check
-  const approved = isApproved(profile);
-  if (!approved) {
-    return <Navigate to="/waitlist" replace />;
+  const state = getDesignerAccountState(user, profile);
+  if (!["approved", "profile-review"].includes(state) || !isApproved(profile)) {
+    return <Navigate to={getDesignerAccountDestination(state)} replace />;
   }
 
   return <Outlet />;
@@ -206,17 +166,29 @@ export const OnboardingGuard = ({ children }) => {
     return children;
   }
 
-  // Step 2: Onboarding check
-  const hasCompletedProfile = isDesignerProfileComplete(profile);
-  if (!hasCompletedProfile && !isWhitelisted(location.pathname)) {
-    return <Navigate to="/onboarding" replace />;
+  if (isSupportPath(location.pathname)) return children;
+
+  const state = getDesignerAccountState(user, profile);
+  const destination = getDesignerAccountDestination(state);
+  const path = location.pathname;
+
+  if (path === "/profile") {
+    if (state === "onboarding") return <Navigate to="/onboarding" replace />;
+    return children;
   }
 
-  // Step 3: Approval check
-  const approved = isApproved(profile);
-  if (hasCompletedProfile && !approved && !isWhitelisted(location.pathname)) {
-    return <Navigate to="/waitlist" replace />;
+  if (
+    path === "/complete-profile" &&
+    state === "profile-incomplete"
+  ) {
+    return children;
   }
+  if (path === "/onboarding" && state === "onboarding") return children;
+  if (path === "/waitlist" && ["pending", "review"].includes(state)) {
+    return children;
+  }
+
+  if (path !== destination) return <Navigate to={destination} replace />;
 
   return children;
 };

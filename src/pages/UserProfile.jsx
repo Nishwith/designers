@@ -10,6 +10,7 @@ import {
   Shield,
   Calendar,
   Clock,
+  MapPin,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useNavigate, Link } from "react-router-dom";
@@ -31,6 +32,8 @@ const UserProfile = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [user, setUser] = useState(null);
+  const [updatingLocation, setUpdatingLocation] = useState(false);
+  const [hasLocation, setHasLocation] = useState(false);
   const [formData, setFormData] = useState({
     fullName: "",
     phone: "",
@@ -58,6 +61,9 @@ const UserProfile = () => {
         .single();
 
       if (profile) {
+        if (profile.location) {
+          setHasLocation(true);
+        }
         const existingCity = profile.city || "";
         const isStandard = CITY_OPTIONS.includes(existingCity);
         setFormData({
@@ -123,6 +129,52 @@ const UserProfile = () => {
     } catch {
       // fallback
     }
+  };
+
+  const handleUpdateLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error("Geolocation is not supported by your browser.");
+      return;
+    }
+
+    if (!user?.id) {
+      toast.error("User not found. Please log in again.");
+      return;
+    }
+
+    setUpdatingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        try {
+          const { error } = await supabase
+            .from("users")
+            .update({ location: `POINT(${longitude} ${latitude})` })
+            .eq("id", user.id);
+
+          if (error) throw error;
+          setHasLocation(true);
+          toast.success("Service area location updated successfully!");
+        } catch (err) {
+          toast.error("Failed to update location: " + (err.message || "Unknown error"));
+        } finally {
+          setUpdatingLocation(false);
+        }
+      },
+      (geoError) => {
+        setUpdatingLocation(false);
+        if (geoError.code === geoError.PERMISSION_DENIED) {
+          toast.error("Location permission denied. Please allow location access in your browser settings.");
+        } else if (geoError.code === geoError.POSITION_UNAVAILABLE) {
+          toast.error("Location information is unavailable. Please try again.");
+        } else if (geoError.code === geoError.TIMEOUT) {
+          toast.error("Location request timed out. Please try again.");
+        } else {
+          toast.error("Could not capture location: " + (geoError.message || "Unknown error"));
+        }
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
   };
 
   // Helper to format date
@@ -283,6 +335,37 @@ const UserProfile = () => {
                 />
               </div>
             )}
+
+            {/* Service Area Location */}
+            <div className="bg-emerald-50/60 p-4 rounded-xl border border-emerald-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <label className="text-xs font-bold text-gray-700 uppercase flex items-center gap-1.5">
+                  <MapPin size={14} className="text-emerald-600" /> Set My Service Area
+                </label>
+                <p className="text-xs text-gray-500 mt-1">
+                  {hasLocation
+                    ? "Service location is set. Homeowners in your region can discover you."
+                    : "Capture your GPS location to serve homeowners in your area."}
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={updatingLocation}
+                onClick={handleUpdateLocation}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 shadow-sm shrink-0"
+              >
+                {updatingLocation ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <MapPin size={14} />
+                )}
+                {updatingLocation
+                  ? "Updating..."
+                  : hasLocation
+                  ? "Update Location"
+                  : "Set My Service Area"}
+              </button>
+            </div>
 
             {/* Change Password Button */}
             <div className="pt-4 border-t border-gray-100 mt-6 mb-4">

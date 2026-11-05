@@ -49,13 +49,17 @@ import toast from "react-hot-toast";
 import { compressImage } from "../utils/imageCompression";
 import { useQueryClient } from "@tanstack/react-query";
 import { signOut } from "../services/authService";
+import {
+  isProfessionalProfileComplete,
+} from "../utils/designerApproval";
+import ProfessionalProfileReviewStatus from "../components/ProfessionalProfileReviewStatus";
 
 // --- HELPER TO PARSE PROJECT JSON DATA ---
 const parseProjectCategory = (catStr) => {
   try {
     const parsed = JSON.parse(catStr);
     return parsed;
-  } catch (e) {
+  } catch {
     return { categories: [catStr], description: "" };
   }
 };
@@ -810,14 +814,48 @@ const EditProjectModal = ({ project, designerId, onClose, onUpdate }) => {
 
 
 
+const ClientContactDetails = ({ name, email, phone, city }) => {
+  const contactFields = [
+    { label: "Client", value: name },
+    { label: "Phone", value: phone, hrefPrefix: "tel:" },
+    { label: "Email", value: email, hrefPrefix: "mailto:" },
+    { label: "City", value: city },
+  ];
+
+  return (
+    <div aria-label="Client contact details" className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {contactFields.map(({ label, value, hrefPrefix }) => (
+        <div key={label} className="min-w-0 bg-white border border-gray-200 p-3 rounded-xl flex items-center gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase font-bold text-gray-500 mb-0.5">{label}</p>
+            {typeof value === "string" && value.trim() ? (
+              hrefPrefix ? (
+                <a href={`${hrefPrefix}${value.trim()}`} className="text-gray-900 font-mono font-medium text-sm break-all">
+                  {value.trim()}
+                </a>
+              ) : (
+                <p className="text-gray-900 font-medium text-sm break-words">{value.trim()}</p>
+              )
+            ) : (
+              <p className="text-gray-500 text-sm">Not provided</p>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 // --- COMPONENT: LEAD CARD ---
 const LeadCard = ({ lead, onStatusUpdate }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const details = parseLeadMessage(lead.message);
 
-  const clientName = lead.client?.full_name || lead.client_name;
-  const clientPhone = lead.client?.phone || lead.client_phone;
-  const clientEmail = lead.client?.email || lead.client_email;
+  const clientDetails = lead.assignedClientDetails || {};
+  const clientName = clientDetails.client_name || lead.client_name;
+  const clientPhone = clientDetails.client_phone || lead.client_phone;
+  const clientEmail = clientDetails.client_email || lead.client_email;
+  const clientCity = clientDetails.client_city || lead.client_city;
 
   return (
     <div className={`bg-white border rounded-2xl p-6 shadow-sm hover:shadow-md transition-all relative overflow-hidden ${lead.status === "accepted" ? "border-emerald-200" : "border-gray-200"}`}>
@@ -825,7 +863,7 @@ const LeadCard = ({ lead, onStatusUpdate }) => {
       <div className={`flex flex-col md:flex-row justify-between items-start md:items-center gap-4 ${isExpanded ? "mb-5 border-b border-gray-100 pb-5" : ""}`}>
         <div>
           <div className="flex items-center gap-3 mb-1">
-            <h3 className="text-xl font-bold text-gray-900">{clientName}</h3>
+            <h3 className="text-xl font-bold text-gray-900">{clientName || "Client inquiry"}</h3>
             <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider border ${lead.status === "accepted" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : lead.status === "on_hold" ? "bg-yellow-50 text-yellow-700 border-yellow-200" : "bg-orange-50 text-orange-700 border-orange-200"}`}>
               {lead.status === "accepted" ? "Active Client" : lead.status === "on_hold" ? "On Hold" : "New Inquiry"}
             </span>
@@ -853,12 +891,12 @@ const LeadCard = ({ lead, onStatusUpdate }) => {
             </div>
           ) : ( <p className="text-gray-700 text-sm leading-relaxed bg-gray-50 p-4 rounded-xl border border-gray-100 italic">"{details.rawMessage}"</p> )}
 
-          {lead.status === "accepted" && (
-            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="bg-white border border-gray-200 p-3 rounded-xl flex items-center gap-3"><div className="p-2 bg-green-50 rounded-lg text-green-600"><Phone size={16}/></div><div className="min-w-0"><p className="text-[10px] uppercase font-bold text-gray-500 mb-0.5">Phone</p><a href={`tel:${clientPhone}`} className="text-gray-900 font-mono font-medium text-sm">{clientPhone}</a></div></div>
-              <div className="bg-white border border-gray-200 p-3 rounded-xl flex items-center gap-3"><div className="p-2 bg-blue-50 rounded-lg text-blue-600"><Mail size={16}/></div><div className="min-w-0"><p className="text-[10px] uppercase font-bold text-gray-500 mb-0.5">Email</p><a href={`mailto:${clientEmail}`} className="text-gray-900 font-mono font-medium text-sm break-all">{clientEmail}</a></div></div>
-            </div>
-          )}
+          <ClientContactDetails
+            name={clientName}
+            phone={clientPhone}
+            email={clientEmail}
+            city={clientCity}
+          />
 
           <div className="mt-5 pt-5 border-t border-gray-100">
             {lead.status === "pending" && (
@@ -902,7 +940,7 @@ const ProjectCard = ({ proj, onDelete, onEdit }) => {
   };
   const prevImage = (e) => {
     e.preventDefault(); e.stopPropagation();
-    if (images.length > 1) setCurrentIndex((prev) => (prev - 1 + images.length) % images.length);
+    if (images.length > 1) setCurrentImgIndex((prev) => (prev - 1 + images.length) % images.length);
   };
 
   return (
@@ -967,7 +1005,7 @@ const ProjectCard = ({ proj, onDelete, onEdit }) => {
 };
 
 // --- MAIN DASHBOARD ---
-const DesignerDashboard = () => {
+const DesignerDashboard = ({ profileOnly = false }) => {
   const { id: adminDesignerId } = useParams(); 
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("leads");
@@ -989,6 +1027,10 @@ const DesignerDashboard = () => {
   });
   const [newTag, setNewTag] = useState("");
   const [logoFile, setLogoFile] = useState(null);
+  const [user, setUser] = useState(null);
+  const [updatingLocation, setUpdatingLocation] = useState(false);
+  const [hasLocation, setHasLocation] = useState(false);
+  const [paymentPromptDismissed, setPaymentPromptDismissed] = useState(false);
 
   // --- Calculate Days Remaining & Expiry Warning State ---
   const calculateDaysRemaining = (subscriptionEnd) => {
@@ -999,14 +1041,14 @@ const DesignerDashboard = () => {
 
   const daysLeft = calculateDaysRemaining(designer?.subscription_end);
 
-  // 1. Pending Payment (Has no subscription end date yet)
   const isPendingPayment = designer?.is_subscription_active === false && !designer?.subscription_end;
+  const showActivationPrompt = !adminDesignerId &&
+    designer?.is_verified === true &&
+    isPendingPayment &&
+    !paymentPromptDismissed;
 
-  // 2. Expired User (Has an end date, but it's in the past)
+  // Subscription state affects publication eligibility, not dashboard access.
   const isExpired = designer?.is_subscription_active === false && designer?.subscription_end && daysLeft < 0;
-
-  // 3. Final Lockout Trigger (Bypassed if Admin Override is active)
-  const isLockedOut = !adminDesignerId && (isPendingPayment || isExpired);
 
   const showWarningBanner = (designer?.is_subscription_active !== false) && Boolean(designer?.subscription_end) && (daysLeft >= 0 && daysLeft <= 7);
 
@@ -1015,6 +1057,17 @@ const DesignerDashboard = () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return navigate("/login");
+        setUser(session.user);
+
+        // Check if designer location is already set in users table
+        const { data: userRec } = await supabase
+          .from("users")
+          .select("location")
+          .eq("id", session.user.id)
+          .maybeSingle();
+        if (userRec?.location) {
+          setHasLocation(true);
+        }
         
         let designerData;
         if (adminDesignerId) {
@@ -1033,6 +1086,7 @@ const DesignerDashboard = () => {
         }
 
         setDesigner(designerData);
+        setIsProfileIncomplete(!isProfessionalProfileComplete(designerData));
         setProfileForm({
           name: designerData.name || "", city: designerData.city || "", projects_completed: designerData.projects_completed ?? 0,
           about_text: designerData.about_text || "", experience_years: designerData.experience_years || 0,
@@ -1042,14 +1096,36 @@ const DesignerDashboard = () => {
           is_public: designerData.is_public !== false
         });
 
-        if (designerData.projects_completed === undefined || designerData.projects_completed === null || !designerData.about_text) setIsProfileIncomplete(true);
+        if (designerData.projects_completed === undefined || designerData.projects_completed === null || !designerData.about_text) {
+          setActiveTab("settings");
+        }
+
+        if (profileOnly) return;
 
         const { data: leadsData } = await supabase
           .from("connections")
-          .select("*, client:users(full_name, email, phone, city)")
+          .select("*")
           .eq("designer_id", designerData.id)
-          .order("updated_at", { ascending: false }); 
-        setLeads(leadsData || []);
+          .order("updated_at", { ascending: false });
+        const leadsWithClientDetails = await Promise.all((leadsData || []).map(async (lead) => {
+          if (lead.id === null || lead.id === undefined) {
+            return { ...lead, assignedClientDetails: null };
+          }
+
+          try {
+            const { data, error: contactError } = await supabase.rpc(
+              "get_assigned_client_details",
+              { p_connection_id: lead.id }
+            );
+            if (contactError) throw contactError;
+            const assignedClientDetails = Array.isArray(data) ? data[0] || null : data || null;
+            return { ...lead, assignedClientDetails };
+          } catch (contactError) {
+            console.error("Unable to load assigned client contact details:", contactError?.message || contactError);
+            return { ...lead, assignedClientDetails: null };
+          }
+        }));
+        setLeads(leadsWithClientDetails);
 
         const { data: projectsData } = await supabase.from("designer_projects").select(`*, project_images (id, image_url, is_cover, room_category)`).eq("designer_id", designerData.id).order("created_at", { ascending: false });
         setProjects(projectsData || []);
@@ -1060,15 +1136,19 @@ const DesignerDashboard = () => {
       }
     };
     fetchData();
-  }, [navigate, adminDesignerId]); 
+  }, [navigate, adminDesignerId, profileOnly]);
 
   const handleInitiateRazorpayCheckout = async (tierInput = "subscription") => {
+    if (!designer?.is_verified) {
+      toast.error("Payment is available after your professional profile is verified.");
+      return;
+    }
     const tier = (tierInput === "new" || tierInput === "renew") ? "subscription" : tierInput;
     const toastId = toast.loading("Initializing payment...");
 
     try {
       const { data: orderData, error: orderError } = await supabase.functions.invoke("create-razorpay-order", {
-        body: { tier },
+        body: { tier, designer_id: designer?.id },
       });
 
       if (orderError || !orderData?.id) {
@@ -1110,7 +1190,6 @@ const DesignerDashboard = () => {
               setDesigner((prev) => ({
                 ...prev,
                 is_subscription_active: true,
-                is_public: true,
                 subscription_end: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
               }));
             } else if (tier.startsWith("featured_")) {
@@ -1135,6 +1214,9 @@ const DesignerDashboard = () => {
         theme: {
           color: "#ea580c",
         },
+        modal: {
+          ondismiss: () => toast("Payment was dismissed. You can use Pay Now from Billing & Marketing whenever you're ready."),
+        },
       };
 
       if (window.Razorpay) {
@@ -1155,6 +1237,69 @@ const DesignerDashboard = () => {
     };
   }, [designer]);
 
+  // Keep the current dashboard in sync when an administrator verifies this
+  // profile in another session. Verification updates the existing row, so no
+  // second payment system or database field is required.
+  useEffect(() => {
+    if (!designer?.id || adminDesignerId) return undefined;
+
+    let isMounted = true;
+    const refreshPaymentEligibility = async () => {
+      const { data, error } = await supabase
+        .from("designers")
+        .select("id, is_verified, is_subscription_active, subscription_end, is_public")
+        .eq("id", designer.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Unable to refresh designer payment status:", error);
+        return;
+      }
+      if (!isMounted || !data) return;
+
+      // The route guards observe the joined profile at ["users", userId],
+      // while this dashboard keeps its own designer row for its controls.
+      // Keep both snapshots aligned when verification changes in the admin
+      // application so the guard and dashboard cannot disagree mid-session.
+      queryClient.setQueryData(["users", designer.user_id], (profile) => {
+        if (!profile?.designer || profile.designer.id !== data.id) return profile;
+        return { ...profile, designer: { ...profile.designer, ...data } };
+      });
+
+      setDesigner((current) => {
+        if (!current || current.id !== data.id) return current;
+        if (
+          current.is_verified === data.is_verified &&
+          current.is_subscription_active === data.is_subscription_active &&
+          current.subscription_end === data.subscription_end &&
+          current.is_public === data.is_public
+        ) {
+          return current;
+        }
+        return { ...current, ...data };
+      });
+
+      // Refresh the complete joined profile after publishing the updated
+      // subset above. This also reconciles any other profile fields changed
+      // during the same admin action without blocking the visible dashboard.
+      void queryClient.invalidateQueries({
+        queryKey: ["users", designer.user_id],
+        exact: true,
+      }).catch((refreshError) => {
+        console.error("Unable to refresh designer account state:", refreshError);
+      });
+    };
+
+    const intervalId = window.setInterval(refreshPaymentEligibility, 5000);
+    window.addEventListener("focus", refreshPaymentEligibility);
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshPaymentEligibility);
+    };
+  }, [designer?.id, designer?.user_id, adminDesignerId, queryClient]);
+
+  // Open the existing Razorpay checkout once when the admin verification
   const handleRequestRenewal = async () => {
     try {
       await supabase.from("designers").update({ renewal_requested: true }).eq("id", designer.id);
@@ -1184,6 +1329,12 @@ const DesignerDashboard = () => {
 
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
+    const normalizedAbout = profileForm.about_text.trim();
+    const projectsCompleted = Number(profileForm.projects_completed);
+    if (profileOnly && (!normalizedAbout || !Number.isInteger(projectsCompleted) || projectsCompleted < 0)) {
+      toast.error("Enter a valid completed-project count and an About description before submitting.");
+      return;
+    }
     setUploading(true);
     try {
       let finalUrl = profileForm.logo_url;
@@ -1195,7 +1346,7 @@ const DesignerDashboard = () => {
         finalUrl = supabase.storage.from("portfolio").getPublicUrl(fileName).data.publicUrl;
       }
       const updatePayload = {
-        name: profileForm.name, city: profileForm.city, projects_completed: parseInt(profileForm.projects_completed) || 0, about_text: profileForm.about_text,
+        name: profileForm.name, city: profileForm.city, projects_completed: parseInt(profileForm.projects_completed) || 0, about_text: profileOnly ? normalizedAbout : profileForm.about_text,
         experience_years: parseInt(profileForm.experience_years) || 0, video_link: profileForm.video_link,
         video_link_2: profileForm.video_link_2, designer_type: profileForm.designer_type,
         phone: profileForm.phone, email: profileForm.email, style_tags: profileForm.style_tags, logo_url: finalUrl,
@@ -1203,9 +1354,20 @@ const DesignerDashboard = () => {
       };
       const { error: updateError } = await supabase.from("designers").update(updatePayload).eq("id", designer.id);
       if (updateError) throw updateError;
-      setDesigner({ ...designer, ...updatePayload });
-      setIsProfileIncomplete(false);
-      toast.success("Profile Updated!");
+      const updatedDesigner = { ...designer, ...updatePayload };
+      setDesigner(updatedDesigner);
+      setIsProfileIncomplete(!isProfessionalProfileComplete(updatedDesigner));
+      if (profileOnly) {
+        queryClient.setQueryData(["users", user.id], (currentProfile) => ({
+          ...(currentProfile || {}),
+          role: currentProfile?.role || "designer",
+          designer: updatedDesigner,
+        }));
+        toast.success("Professional profile submitted for admin review.");
+        navigate("/dashboard", { replace: true });
+      } else {
+        toast.success("Profile Updated!");
+      }
     } catch (err) {
       toast.error("Save failed: " + err.message);
     } finally {
@@ -1230,7 +1392,10 @@ const DesignerDashboard = () => {
         });
         toast.success(`Moved to ${status === 'accepted' ? 'Active' : 'On Hold'}`);
       }
-    } catch (error) { toast.error("Failed to update status."); }
+    } catch (error) {
+      console.error("Failed to update inquiry status:", error);
+      toast.error("Failed to update status.");
+    }
   };
 
   const addTag = () => {
@@ -1259,6 +1424,53 @@ const DesignerDashboard = () => {
     } catch {
       // fallback
     }
+  };
+
+  const handleUpdateLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error("Geolocation is not supported by your browser.");
+      return;
+    }
+
+    const currentUserId = user?.id || designer?.user_id;
+    if (!currentUserId) {
+      toast.error("User ID not found. Please log in again.");
+      return;
+    }
+
+    setUpdatingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        try {
+          const { error } = await supabase
+            .from("users")
+            .update({ location: `POINT(${longitude} ${latitude})` })
+            .eq("id", currentUserId);
+
+          if (error) throw error;
+          setHasLocation(true);
+          toast.success("Service area location updated successfully!");
+        } catch (err) {
+          toast.error("Failed to update location: " + (err.message || "Unknown error"));
+        } finally {
+          setUpdatingLocation(false);
+        }
+      },
+      (geoError) => {
+        setUpdatingLocation(false);
+        if (geoError.code === geoError.PERMISSION_DENIED) {
+          toast.error("Location permission denied. Please allow location access in your browser settings.");
+        } else if (geoError.code === geoError.POSITION_UNAVAILABLE) {
+          toast.error("Location information is unavailable. Please try again.");
+        } else if (geoError.code === geoError.TIMEOUT) {
+          toast.error("Location request timed out. Please try again.");
+        } else {
+          toast.error("Could not capture location: " + (geoError.message || "Unknown error"));
+        }
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
   };
 
   const renderProfileForm = () => (
@@ -1296,6 +1508,37 @@ const DesignerDashboard = () => {
         </select>
       </div>
 
+      {/* --- SERVICE AREA LOCATION --- */}
+      <div className="bg-emerald-50/50 p-5 rounded-xl border border-emerald-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+            <MapPin size={16} className="text-emerald-600" /> Set My Service Area
+          </h4>
+          <p className="text-xs text-gray-500 mt-1">
+            {hasLocation
+              ? "Your service location is set. Homeowners in your service area can connect with you."
+              : "Capture your GPS coordinates to allow clients in your service region to discover you."}
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={updatingLocation}
+          onClick={handleUpdateLocation}
+          className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 shadow-sm shrink-0"
+        >
+          {updatingLocation ? (
+            <Loader2 size={16} className="animate-spin" />
+          ) : (
+            <MapPin size={16} />
+          )}
+          {updatingLocation
+            ? "Updating..."
+            : hasLocation
+            ? "Update Location"
+            : "Set My Service Area"}
+        </button>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50/50 p-4 rounded-xl border border-gray-200/50">
         <div className="opacity-70"><label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1"><Mail size={10} /> Email <Lock size={10} /></label><p className="text-gray-900 font-mono text-sm truncate">{profileForm.email}</p></div>
         <div className="opacity-70"><label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1"><Phone size={10} /> Phone <Lock size={10} /></label><p className="text-gray-900 font-mono text-sm">{profileForm.phone}</p></div>
@@ -1319,22 +1562,37 @@ const DesignerDashboard = () => {
         </div>
       </div>
       <div><label className="text-xs font-bold text-gray-500 uppercase">Total Projects Completed</label><input type="number" min="0" className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-gray-900 mt-1" value={profileForm.projects_completed} onChange={(e) => setProfileForm({ ...profileForm, projects_completed: e.target.value })} /></div>
-      <div><label className="text-xs font-bold text-gray-500 uppercase">About</label><textarea rows="4" className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-gray-900 mt-1" value={profileForm.about_text} onChange={(e) => setProfileForm({ ...profileForm, about_text: e.target.value })} /></div>
+      <div><label htmlFor="designer-about-text" className="text-xs font-bold text-gray-500 uppercase">About</label><textarea id="designer-about-text" rows="4" className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-gray-900 mt-1" value={profileForm.about_text} onChange={(e) => setProfileForm({ ...profileForm, about_text: e.target.value })} /></div>
       <div className="space-y-4">
         <label className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2"><Video size={14} /> Video Intros (Optional)</label>
         <input type="url" placeholder="Video Link 1 (Youtube/Vimeo)" className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-gray-900" value={profileForm.video_link} onChange={(e) => setProfileForm({ ...profileForm, video_link: e.target.value })} />
         <input type="url" placeholder="Video Link 2 (Youtube/Vimeo)" className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-gray-900" value={profileForm.video_link_2} onChange={(e) => setProfileForm({ ...profileForm, video_link_2: e.target.value })} />
       </div>
-      <button type="submit" disabled={uploading} className="w-full bg-brand-accent hover:bg-orange-600 text-white font-bold py-3.5 rounded-xl disabled:opacity-50 shadow-lg">{uploading ? <Loader2 className="animate-spin mx-auto" /> : "Save Changes"}</button>
+      <button type="submit" disabled={uploading} className="w-full bg-brand-accent hover:bg-orange-600 text-white font-bold py-3.5 rounded-xl disabled:opacity-50 shadow-lg">{uploading ? <Loader2 className="animate-spin mx-auto" /> : profileOnly ? "Submit profile for review" : "Save Changes"}</button>
     </form>
   );
 
   if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-900"><Loader2 className="animate-spin text-brand-accent" size={40} /></div>;
-  if (isProfileIncomplete) return <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4"><div className="w-full max-w-2xl"><h1 className="text-2xl font-bold text-gray-900 text-center mb-6">Complete Profile</h1>{renderProfileForm()}</div></div>;
-
+  if (profileOnly) {
+    return (
+      <div className="min-h-[calc(100vh-8rem)] bg-gray-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-3xl">
+          <h1 className="text-2xl font-bold text-gray-900 text-center mb-3">
+            {isProfileIncomplete ? "Complete Your Professional Profile" : "Review Your Professional Profile"}
+          </h1>
+          {!isProfileIncomplete && (
+            <p className="text-sm text-gray-600 text-center mb-6">
+              Your submitted details are awaiting admin approval. You can update them here while they are under review.
+            </p>
+          )}
+          {renderProfileForm()}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="relative min-h-screen bg-gray-50">
-      <div className={`min-h-screen bg-gray-50 flex flex-col md:flex-row text-gray-900 overflow-hidden relative transition-all duration-300 ${isLockedOut ? "blur-sm pointer-events-none select-none opacity-60" : ""}`}>
+      <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row text-gray-900 overflow-hidden relative transition-all duration-300">
         {adminDesignerId && (
           <div className="absolute top-0 left-0 w-full bg-blue-600 text-white p-2 text-center text-xs font-bold flex items-center justify-center gap-2 z-[100] shadow-md">
             <ShieldAlert size={14} /> ADMIN OVERRIDE MODE: You are managing {designer?.name}'s profile.
@@ -1355,9 +1613,8 @@ const DesignerDashboard = () => {
         </div>
 
         <aside className={`hidden md:flex w-72 bg-white border-r border-gray-200 flex-col p-6 sticky top-0 h-screen overflow-y-auto ${adminDesignerId ? 'pt-12' : ''}`}>
-          <div className="mb-6 w-full text-center">
-            <h1 className="text-xl font-black text-gray-900 tracking-tight">VISHWAKARMANS</h1>
-            <p className="text-[10px] font-bold text-orange-500 uppercase tracking-widest mt-0.5">Designers</p>
+          <div className="mb-6 w-full flex flex-col items-center justify-center">
+            <img src="/logo.png" alt="Vishwakarmans Logo" className="h-8 md:h-10 w-auto object-contain" />
           </div>
           <div className="flex flex-col items-center mb-10 text-center">
             <div className="w-24 h-24 bg-gray-100 rounded-full mb-4 border-2 border-gray-200 overflow-hidden shadow-sm">
@@ -1375,7 +1632,7 @@ const DesignerDashboard = () => {
           <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-red-600 hover:bg-red-50 mt-auto border border-transparent hover:border-red-200 transition-colors"><LogOut size={20} /> Sign Out</button>
         </aside>
         
-        <main className={`flex-1 p-4 md:p-10 mt-16 md:mt-0 mb-20 md:mb-0 overflow-y-auto h-[calc(100vh-140px)] md:h-screen ${adminDesignerId ? 'md:pt-16' : ''}`}>
+        <main className={`flex-1 p-4 md:p-8 mt-16 md:mt-0 mb-20 md:mb-0 overflow-y-auto h-[calc(100vh-140px)] md:h-screen ${adminDesignerId ? 'md:pt-16' : ''}`}>
           
           {/* --- 7-DAY EXPIRY WARNING BANNER --- */}
           {showWarningBanner && (
@@ -1397,7 +1654,7 @@ const DesignerDashboard = () => {
           {activeTab === "leads" && (
             <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
               {/* --- TOP STATISTICS CARDS (Real Supabase Data) --- */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
                   <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Total Inquiries</p>
                   <p className="text-2xl font-extrabold text-gray-900">{leads?.length || 0}</p>
@@ -1409,6 +1666,10 @@ const DesignerDashboard = () => {
                 <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
                   <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Profile Views</p>
                   <p className="text-2xl font-extrabold text-brand-accent">{designer?.profile_views || 0}</p>
+                </div>
+                <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Account Status</p>
+                  <p className="text-2xl font-extrabold text-emerald-600 capitalize">{designer?.status || "Active"}</p>
                 </div>
               </div>
 
@@ -1434,7 +1695,7 @@ const DesignerDashboard = () => {
                 </div>
               </div>
 
-              <div className={`grid gap-4 ${isLockedOut ? "blur-sm select-none pointer-events-none" : ""}`}>
+              <div className="grid gap-4">
                 {leads.filter((l) => l.status === leadFilter).length === 0 ? (
                   <div className="bg-gray-50 border border-gray-200 border-dashed rounded-3xl p-8 md:p-12 text-center text-gray-500">
                     <AlertCircle className="mx-auto mb-3 text-gray-400" size={40} />
@@ -1483,6 +1744,9 @@ const DesignerDashboard = () => {
           
           {activeTab === "settings" && (
             <div className="max-w-3xl mx-auto pb-10">
+              {designer?.is_verified === false && isProfessionalProfileComplete(designer) && (
+                <ProfessionalProfileReviewStatus />
+              )}
               <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-6 flex items-center gap-3"><Settings className="text-brand-accent" /> Profile Settings</h1>
               {renderProfileForm()}
             </div>
@@ -1490,35 +1754,50 @@ const DesignerDashboard = () => {
         </main>
       </div>
 
-      {/* --- EXPIRED LOCKOUT PAYWALL MODAL --- */}
-      {isLockedOut && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white border border-gray-200 rounded-3xl p-8 max-w-md w-full text-center shadow-2xl space-y-6">
-
-            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto shadow-inner ${isPendingPayment ? 'bg-blue-50 text-blue-500' : 'bg-red-50 text-red-500'}`}>
-              {isPendingPayment ? <Sparkles size={32} /> : <Lock size={32} />}
+      {showActivationPrompt && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm animate-in fade-in">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="activation-prompt-title"
+            className="relative w-full max-w-md space-y-6 rounded-3xl border border-gray-200 bg-white p-8 text-center shadow-2xl"
+          >
+            <button
+              type="button"
+              aria-label="Close activation prompt"
+              onClick={() => setPaymentPromptDismissed(true)}
+              className="absolute right-4 top-4 rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+            >
+              <X size={18} />
+            </button>
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-500 shadow-inner">
+              <Sparkles size={32} />
             </div>
-
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">
-                {isPendingPayment ? "Activate Your Account" : "Your License Has Expired"}
+              <h2 id="activation-prompt-title" className="text-2xl font-bold text-gray-900">
+                Activate Your Account
               </h2>
-              <p className="text-sm text-gray-500 mt-2 leading-relaxed">
-                {isPendingPayment 
-                  ? "Your application has been approved! Complete your subscription payment to unlock your workspace and start receiving leads." 
-                  : "Renew your subscription to unlock your client leads and portfolio management."}
+              <p className="mt-2 text-sm leading-relaxed text-gray-500">
+                Your application has been approved! Complete your subscription payment to unlock your workspace and start receiving leads.
               </p>
             </div>
-
             <div className="space-y-3">
-              <button onClick={() => window.initiateRazorpayCheckout(isPendingPayment ? 'new' : 'renew')} className="w-full py-3.5 bg-gray-900 hover:bg-black text-white font-bold rounded-xl shadow-lg transition-all active:scale-95">
-                {isPendingPayment ? "Pay & Activate Account" : "Renew Subscription"}
+              <button
+                type="button"
+                onClick={() => window.initiateRazorpayCheckout?.("new")}
+                className="w-full rounded-xl bg-gray-900 py-3.5 font-bold text-white shadow-lg transition-all hover:bg-black active:scale-95"
+              >
+                Pay &amp; Activate Account
               </button>
-              <button onClick={handleLogout} className="w-full text-sm font-semibold text-gray-500 hover:text-gray-900 transition-colors">
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="w-full text-sm font-semibold text-gray-500 transition-colors hover:text-gray-900"
+              >
                 Sign Out
               </button>
             </div>
-          </div>
+          </section>
         </div>
       )}
 
