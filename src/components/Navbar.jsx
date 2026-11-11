@@ -48,6 +48,7 @@ const Navbar = () => {
         <div className="flex items-center justify-between h-16 md:h-20">
           <Link to="/" className="flex items-center gap-3 group">
             <img src="/logo.png" alt="Vishwakarmans Logo" className="h-8 md:h-10 w-auto object-contain" />
+            <span className="text-xl font-bold text-gray-900 tracking-tight hidden sm:block">Vishwakarmans Designers</span>
           </Link>
 
           <div className="hidden md:flex items-center space-x-8">

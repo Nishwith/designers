@@ -14,12 +14,13 @@ const Footer = () => {
       {/* Decorative Glow */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-3xl h-1 bg-brand-accent/20 blur-[100px] pointer-events-none"></div>
 
-      <div className="container mx-auto px-4 relative z-10">
+      <div className="max-w-7xl mx-auto px-6 md:px-12 lg:px-16 relative z-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 mb-12">
           {/* 1. BRAND & SOCIALS (Span 5) */}
           <div className="lg:col-span-5 space-y-6">
             <Link to="/" className="flex items-center gap-3 group w-fit">
               <img src="/logo.png" alt="Vishwakarmans Logo" className="h-8 md:h-10 w-auto object-contain" />
+              <span className="text-xl font-bold text-gray-900">Vishwakarmans Designers</span>
             </Link>
             <p className="text-gray-500 font-medium leading-relaxed max-w-md text-base">
               Connecting discerning homeowners with elite interior and exterior

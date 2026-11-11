@@ -49,42 +49,23 @@ const Register = () => {
   };
 
   return (
-    <div className="h-[calc(100vh-4rem)] md:h-[calc(100vh-5rem)] w-full flex flex-col md:flex-row bg-white overflow-hidden animate-fade-in">
-      {/* Left Branding */}
-      <div className="hidden md:flex md:w-1/2 h-full bg-slate-950 relative items-center justify-center p-16">
-        <div className="absolute inset-0 bg-cover bg-center opacity-30 mix-blend-luminosity" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80')" }}></div>
-        <div className="absolute inset-0 bg-gradient-to-tr from-brand-accent/20 to-slate-950/90"></div>
-        <div className="relative z-10 max-w-md text-white space-y-8">
-          <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center backdrop-blur-md">
-            <User className="text-brand-accent w-7 h-7" />
+    <div className="min-h-screen flex flex-col bg-gray-50 -mt-16 md:-mt-20 pt-16 md:pt-20">
+      <div className="flex-1 flex items-center justify-center p-4 sm:p-6 overflow-hidden h-[calc(100vh-4rem)] md:h-[calc(100vh-5rem)]">
+        {/* White form card with inner scroll fallback */}
+        <div className="w-full max-w-md bg-white rounded-2xl sm:rounded-3xl shadow-xl border border-gray-100 p-6 sm:p-8 space-y-3 sm:space-y-4 max-h-full overflow-y-auto animate-slide-up">
+          <div className="flex justify-center mb-2">
+            <img src="/logo.png" alt="Vishwakarmans Logo" className="h-10 sm:h-12 w-auto object-contain" />
           </div>
-          <div className="space-y-4">
-            <h1 className="text-5xl font-extrabold tracking-tight leading-tight font-heading">
-              Join <span className="text-brand-accent">Vishwakarmans</span>
-            </h1>
-            <p className="text-gray-400 text-lg font-sans leading-relaxed font-light">
-              Create your professional partner account to showcase your design portfolio and connect with verified client inquiries.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Right Form */}
-      <div className="w-full md:w-1/2 h-full overflow-y-auto flex flex-col px-6 md:px-12 xl:px-20 bg-white scrollbar-hide py-2">
-        <div className="m-auto w-full max-w-md space-y-6 animate-slide-up">
-          <div className="flex justify-center md:justify-start mb-2">
-            <img src="/logo.png" alt="Vishwakarmans Logo" className="h-8 md:h-10 w-auto object-contain" />
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-4xl font-bold text-gray-900 tracking-tight font-heading">
+          <div className="space-y-1 text-center mb-2">
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight font-heading">
               Create Partner Account
             </h2>
-            <p className="text-gray-500 font-sans font-light text-base">
+            <p className="text-gray-500 font-sans font-light text-sm">
               Enter your details to start your designer onboarding
             </p>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-3">
             <GoogleSignInButton label="Sign up with Google" />
             <div className="relative flex py-1 items-center">
               <div className="flex-grow border-t border-gray-100"></div>
@@ -93,52 +74,54 @@ const Register = () => {
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Full Name */}
-            <div className="group relative border-b border-gray-100 focus-within:border-brand-accent transition-all duration-500 py-1.5">
-              <label className="text-xs font-bold text-gray-400 tracking-widest uppercase block mb-1">Full Name</label>
-              <div className="flex items-center">
-                <User className="h-5 w-5 text-gray-300 group-focus-within:text-brand-accent transition-colors duration-500 mr-3" />
-                <input type="text" name="fullName" value={formData.fullName} onChange={handleChange}
-                  className="block w-full py-2.5 min-h-[44px] bg-transparent text-gray-900 placeholder-gray-300 text-base font-sans border-none outline-none focus:ring-0"
-                  placeholder="John Doe" required />
+          <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
+            <div className="space-y-3">
+              {/* Full Name */}
+              <div className="group relative border-b border-gray-100 focus-within:border-brand-accent transition-all duration-500 py-1.5">
+                <label className="text-xs font-bold text-gray-400 tracking-widest uppercase block mb-1">Full Name</label>
+                <div className="flex items-center">
+                  <User className="h-5 w-5 text-gray-300 group-focus-within:text-brand-accent transition-colors duration-500 mr-3" />
+                  <input type="text" name="fullName" value={formData.fullName} onChange={handleChange}
+                    className="block w-full py-1.5 bg-transparent text-gray-900 placeholder-gray-300 text-base font-sans border-none outline-none focus:ring-0"
+                    placeholder="John Doe" required />
+                </div>
+              </div>
+
+              {/* Email */}
+              <div className="group relative border-b border-gray-100 focus-within:border-brand-accent transition-all duration-500 py-1.5">
+                <label className="text-xs font-bold text-gray-400 tracking-widest uppercase block mb-1">Email Address</label>
+                <div className="flex items-center">
+                  <Mail className="h-5 w-5 text-gray-300 group-focus-within:text-brand-accent transition-colors duration-500 mr-3" />
+                  <input type="email" name="email" value={formData.email} onChange={handleChange}
+                    className="block w-full py-1.5 bg-transparent text-gray-900 placeholder-gray-300 text-base font-sans border-none outline-none focus:ring-0"
+                    placeholder="name@example.com" required />
+                </div>
+              </div>
+
+              {/* Password */}
+              <div className="group relative border-b border-gray-100 focus-within:border-brand-accent transition-all duration-500 py-1.5">
+                <label className="text-xs font-bold text-gray-400 tracking-widest uppercase block mb-1">Password</label>
+                <div className="flex items-center">
+                  <Lock className="h-5 w-5 text-gray-300 group-focus-within:text-brand-accent transition-colors duration-500 mr-3" />
+                  <input type={showPassword ? "text" : "password"} name="password" value={formData.password} onChange={handleChange}
+                    className="block w-full py-1.5 bg-transparent text-gray-900 placeholder-gray-300 text-base font-sans border-none outline-none focus:ring-0"
+                    placeholder="••••••••" required />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)}
+                    className="text-gray-400 hover:text-gray-900 transition-colors ml-2 cursor-pointer">
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Email */}
-            <div className="group relative border-b border-gray-100 focus-within:border-brand-accent transition-all duration-500 py-1.5">
-              <label className="text-xs font-bold text-gray-400 tracking-widest uppercase block mb-1">Email Address</label>
-              <div className="flex items-center">
-                <Mail className="h-5 w-5 text-gray-300 group-focus-within:text-brand-accent transition-colors duration-500 mr-3" />
-                <input type="email" name="email" value={formData.email} onChange={handleChange}
-                  className="block w-full py-2.5 min-h-[44px] bg-transparent text-gray-900 placeholder-gray-300 text-base font-sans border-none outline-none focus:ring-0"
-                  placeholder="name@example.com" required />
-              </div>
-            </div>
-
-            {/* Password */}
-            <div className="group relative border-b border-gray-100 focus-within:border-brand-accent transition-all duration-500 py-1.5">
-              <label className="text-xs font-bold text-gray-400 tracking-widest uppercase block mb-1">Password</label>
-              <div className="flex items-center">
-                <Lock className="h-5 w-5 text-gray-300 group-focus-within:text-brand-accent transition-colors duration-500 mr-3" />
-                <input type={showPassword ? "text" : "password"} name="password" value={formData.password} onChange={handleChange}
-                  className="block w-full py-2.5 min-h-[44px] bg-transparent text-gray-900 placeholder-gray-300 text-base font-sans border-none outline-none focus:ring-0"
-                  placeholder="••••••••" required />
-                <button type="button" onClick={() => setShowPassword(!showPassword)}
-                  className="text-gray-400 hover:text-gray-900 transition-colors ml-2 cursor-pointer">
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-            </div>
-
-            <div className="pt-2">
+            <div className="pt-1">
               <button disabled={loading}
-                className="group relative w-full min-h-[48px] h-12 bg-gray-900 hover:bg-brand-accent text-white font-bold rounded-2xl transition-all duration-500 flex items-center justify-center gap-3 cursor-pointer shadow-xl shadow-slate-900/5 hover:shadow-brand-accent/25 hover:-translate-y-0.5 disabled:opacity-75">
+                className="group relative w-full py-3 bg-gray-900 hover:bg-brand-accent text-white font-bold rounded-2xl transition-all duration-500 flex items-center justify-center gap-3 cursor-pointer shadow-xl shadow-slate-900/5 hover:shadow-brand-accent/25 hover:-translate-y-0.5 disabled:opacity-75">
                 {loading ? <Loader2 className="animate-spin h-5 w-5" /> : "Create Account"}
               </button>
             </div>
 
-            <div className="text-center text-sm text-gray-500">
+            <div className="text-center text-xs sm:text-sm text-gray-500">
               Already have an account?{" "}
               <Link to="/login" className="text-brand-accent font-bold hover:underline transition-colors">
                 Log in
