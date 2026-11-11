@@ -9,6 +9,7 @@ import {
   Briefcase,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import { updateUserProfile } from "../services/authService";
 
 const UnifiedOnboarding = () => {
   const navigate = useNavigate();
@@ -130,13 +131,23 @@ const UnifiedOnboarding = () => {
 
       if (error) throw error;
 
+      // Chicken-and-Egg Onboarding Fix: immediately provision base sandbox profile
+      const { error: sandboxError } = await supabase.rpc("designer_create_sandbox_profile", {
+        p_name: formData.orgName,
+        p_city: finalCity,
+        p_designer_type: formData.designerType,
+      });
+      if (sandboxError) {
+        console.error("Warning: designer_create_sandbox_profile:", sandboxError);
+      }
+
       if (user?.id) {
-        await supabase.from("users").update({
+        await updateUserProfile(user.id, {
           phone: formData.phone,
           city: finalCity,
           full_name: formData.orgName,
           profile_completed: true,
-        }).eq("id", user.id);
+        });
       }
 
       toast.success("Application Submitted! We will contact you soon.");

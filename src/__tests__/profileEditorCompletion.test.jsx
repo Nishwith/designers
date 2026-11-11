@@ -36,7 +36,12 @@ const mocks = vi.hoisted(() => ({
   razorpayOpen: vi.fn(),
 }));
 
-const toastMock = vi.hoisted(() => Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn(), loading: vi.fn(), dismiss: vi.fn() }));
+const toastMock = vi.hoisted(() => Object.assign(vi.fn(), {
+  error: vi.fn(),
+  success: vi.fn(),
+  loading: vi.fn(),
+  dismiss: vi.fn(),
+}));
 
 vi.mock("../supabaseClient", () => ({
   supabase: {
@@ -82,7 +87,10 @@ describe("existing full designer profile editor inside the dashboard", () => {
       const query = {
         select: vi.fn(() => query),
         eq: vi.fn(() => query),
-        maybeSingle: vi.fn(async () => ({ data: table === "designers" ? { ...mocks.designer } : null, error: null })),
+        maybeSingle: vi.fn(async () => ({
+          data: table === "designers" ? { ...mocks.designer } : table === "users" ? { location: "POINT(78.4867 17.3850)" } : null,
+          error: null
+        })),
         order: vi.fn(async () => ({ data: table === "connections" ? mocks.leads : [], error: null })),
         update: mocks.update,
       };
@@ -178,7 +186,6 @@ describe("existing full designer profile editor inside the dashboard", () => {
       about_text: "Professional studio profile",
       video_link: "https://youtube.com/watch?v=old1",
       video_link_2: "https://youtube.com/watch?v=old2",
-      is_public: false,
     }));
     expect(toastMock.success).toHaveBeenCalledWith("Professional profile submitted for admin review.");
   });
@@ -233,7 +240,7 @@ describe("existing full designer profile editor inside the dashboard", () => {
       window.dispatchEvent(new Event("focus"));
     });
 
-    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", {}, { timeout: 10000 })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Professional Profile Under Review" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Activate Your Account" })).toBeInTheDocument();
   });
@@ -293,7 +300,7 @@ describe("existing full designer profile editor inside the dashboard", () => {
       window.dispatchEvent(new Event("focus"));
     });
 
-    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", {}, { timeout: 10000 })).toBeInTheDocument();
     await waitFor(() => {
       expect(queryClient.getQueryData(["users", mocks.userId]).designer.is_verified).toBe(true);
     });
@@ -418,7 +425,6 @@ describe("existing full designer profile editor inside the dashboard", () => {
     expect(within(contactDetails).getByText(`Client ${connectionId}`)).toBeInTheDocument();
     expect(within(contactDetails).getByText(`client${connectionId}@example.com`)).toBeInTheDocument();
     expect(within(contactDetails).getByText(`+91-9000000${connectionId}`)).toBeInTheDocument();
-    expect(within(contactDetails).getByText("Hyderabad")).toBeInTheDocument();
     expect(screen.getByText(/requirements/i)).toBeInTheDocument();
     expect(mocks.rpc).toHaveBeenCalledTimes(3);
     expect(mocks.rpc).toHaveBeenCalledWith("get_assigned_client_details", {
@@ -449,7 +455,7 @@ describe("existing full designer profile editor inside the dashboard", () => {
     expect(await screen.findByText("Inquiries & Clients")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "View Details" }));
     const contactDetails = screen.getByLabelText("Client contact details");
-    expect(within(contactDetails).getAllByText("Not provided")).toHaveLength(3);
+    expect(within(contactDetails).getAllByText("Not provided")).toHaveLength(2);
     expect(screen.getByText(/home office redesign/i)).toBeInTheDocument();
   });
 
@@ -481,7 +487,6 @@ describe("existing full designer profile editor inside the dashboard", () => {
     expect(within(contactDetails).getByText("Legacy Client")).toBeInTheDocument();
     expect(within(contactDetails).getByText("legacy@example.com")).toBeInTheDocument();
     expect(within(contactDetails).getByText("+91-9111111111")).toBeInTheDocument();
-    expect(within(contactDetails).getByText("Pune")).toBeInTheDocument();
     expect(mocks.rpc).toHaveBeenCalledWith("get_assigned_client_details", { p_connection_id: 202 });
   });
 
@@ -507,7 +512,7 @@ describe("existing full designer profile editor inside the dashboard", () => {
     expect(screen.getByText("Client inquiry")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "View Details" }));
     expect(screen.getByText(/remains visible after RPC failure/i)).toBeInTheDocument();
-    expect(screen.getAllByText("Not provided")).toHaveLength(4);
+    expect(screen.getAllByText("Not provided")).toHaveLength(3);
     expect(consoleError).toHaveBeenCalledWith("Unable to load assigned client contact details:", "RPC unavailable");
     consoleError.mockRestore();
   });

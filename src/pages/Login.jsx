@@ -10,7 +10,7 @@ const Login = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
-  const [isResetMode, setIsResetMode] = useState(false); 
+  const [isResetMode, setIsResetMode] = useState(false);
   const [showPassword, setShowPassword] = useState(false); 
   const [formData, setFormData] = useState({ email: "", password: "" });
 
@@ -28,7 +28,7 @@ const Login = () => {
       await queryClient.invalidateQueries({ queryKey: ['auth'] });
       await queryClient.invalidateQueries({ queryKey: ['users'] });
       toast.success("Welcome back!");
-      navigate("/");
+      navigate("/dashboard");
     } catch (error) {
       toast.error(error.message || "Login failed");
     } finally {

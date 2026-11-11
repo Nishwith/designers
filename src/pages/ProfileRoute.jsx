@@ -36,8 +36,13 @@ const ProfileRoute = () => {
   if (profileError) {
     return <div role="alert" className="p-6 text-center">Unable to refresh your designer profile. Please reload and try again.</div>;
   }
-  if (profile?.role === "admin" || profile?.role === "user") {
+  if (profile?.role === "admin") {
     return <Navigate to="/login" replace />;
+  }
+
+  // Allow standard users (role === 'user' without an approved designer profile) to access their profile form
+  if (profile?.role === "user") {
+    return <UserProfile />;
   }
 
   const accountState = getDesignerAccountState(user, profile);

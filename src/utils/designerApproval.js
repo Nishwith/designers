@@ -23,7 +23,6 @@ export const isApproved = (profile) => {
 
 export const getDesignerAccountState = (user, profile) => {
   if (!user) return "unauthenticated";
-  if (profile?.role === "admin" || profile?.role === "user") return "unauthorized";
 
   const application = profile?.application;
   const designer = profile?.designer;

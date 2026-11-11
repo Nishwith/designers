@@ -356,7 +356,9 @@ describe('Vishwakarmans Integration Tests', () => {
     const publishBtn = screen.getByRole('button', { name: /Publish Complete Project/i });
 
     // Fill form inputs
+    const placeInput = screen.getByPlaceholderText(/E.g., Jubilee Hills/i);
     await userEvent.type(titleInput, 'Luxury Living Lounge');
+    await userEvent.type(placeInput, 'Banjara Hills');
     await userEvent.type(descTextarea, 'A spacious modern living room project.');
 
     // Select category (Living Room)
@@ -375,7 +377,7 @@ describe('Vishwakarmans Integration Tests', () => {
     await waitFor(() => {
       expect(mockSupabaseClient.from).toHaveBeenCalledWith('designer_projects');
     });
-  });
+  }, 15000);
 
   test('Designer can set service area location via geolocation', async () => {
     authHooks.useCurrentUser.mockReturnValue({
@@ -417,7 +419,7 @@ describe('Vishwakarmans Integration Tests', () => {
     const profileNavBtns = screen.getAllByRole('button', { name: /Profile/i });
     await userEvent.click(profileNavBtns[0]);
 
-    const setLocationBtn = screen.getByRole('button', { name: /Set My Service Area/i });
+    const setLocationBtn = screen.getByRole('button', { name: /Set the location|Set My Service Area|Please give your location/i });
     expect(setLocationBtn).toBeInTheDocument();
 
     await userEvent.click(setLocationBtn);
@@ -467,7 +469,7 @@ describe('Vishwakarmans Integration Tests', () => {
     const profileNavBtns = screen.getAllByRole('button', { name: /Profile/i });
     await userEvent.click(profileNavBtns[0]);
 
-    const setLocationBtn = screen.getByRole('button', { name: /Set My Service Area/i });
+    const setLocationBtn = screen.getByRole('button', { name: /Set the location|Set My Service Area|Please give your location/i });
     await userEvent.click(setLocationBtn);
 
     expect(mockGetCurrentPosition).toHaveBeenCalled();

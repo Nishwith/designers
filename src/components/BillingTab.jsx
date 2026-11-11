@@ -20,7 +20,6 @@ const BillingTab = ({ designer, onRequestRenewal, onRequestFeature, onCheckout, 
         });
       } catch (err) {
         if (err?.name !== 'AbortError') console.error('Share action failed:', err);
-        console.log('Share dismissed');
       }
     } else {
       navigator.clipboard.writeText(shareText);
@@ -41,7 +40,6 @@ const BillingTab = ({ designer, onRequestRenewal, onRequestFeature, onCheckout, 
       if (error) {
         console.error("Supabase Fetch Error:", error);
       } else {
-        console.log("Fetched Payment History:", data);
         setPaymentHistory(data || []);
       }
     };

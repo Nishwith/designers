@@ -1,8 +1,6 @@
-import React, { useEffect } from "react";
+import React from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useCurrentUser, useUserProfile } from "../hooks/useAuth";
-import { supabase } from "../supabaseClient";
-import toast from "react-hot-toast";
 import { Loader2 } from "lucide-react";
 import {
   getDesignerAccountDestination,
@@ -33,44 +31,18 @@ const SUPPORT_PATHS = new Set([
 
 const isSupportPath = (pathname) => SUPPORT_PATHS.has(pathname);
 
-// Custom hook to reject non-designer users immediately
-const useBouncer = (user, profile) => {
-  const isUnauthorized = Boolean(
-    user && profile && (profile.role === "admin" || profile.role === "user")
-  );
-
-  useEffect(() => {
-    if (isUnauthorized) {
-      const performSignOut = async () => {
-        if (typeof supabase?.auth?.signOut === "function") {
-          try {
-            await supabase.auth.signOut();
-          } catch (error) {
-            console.error("Failed to sign out unauthorized user:", error);
-          }
-        }
-        toast.error("Unauthorized: This portal is strictly for verified Designers");
-      };
-      performSignOut();
-    }
-  }, [isUnauthorized]);
-
-  return isUnauthorized;
-};
-
 // 1. REQUIRE AUTH (Any logged in user)
 export const RequireAuth = () => {
   const { data: user, isLoading: userLoading } = useCurrentUser();
   const { data: profile, isLoading: profileLoading } = useUserProfile(user?.id);
   const location = useLocation();
-  const isUnauthorizedRole = useBouncer(user, profile);
 
   if (userLoading || (user && profileLoading)) {
     return <LoadingScreen />;
   }
 
   // Step 1: Auth check
-  if (!user || isUnauthorizedRole) {
+  if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
@@ -78,7 +50,10 @@ export const RequireAuth = () => {
   const destination = getDesignerAccountDestination(state);
 
   if (location.pathname === "/profile") {
-    if (state === "onboarding") return <Navigate to={destination} replace />;
+    if (state === "onboarding") {
+      if (profile?.role === "user") return <Outlet />;
+      return <Navigate to={destination} replace />;
+    }
     return <Outlet />;
   }
   if (location.pathname === "/complete-profile") {
@@ -106,14 +81,17 @@ export const RequireAuth = () => {
 export const GuestRoute = ({ children }) => {
   const { data: user, isLoading: userLoading } = useCurrentUser();
   const { data: profile, isLoading: profileLoading } = useUserProfile(user?.id);
-  const isUnauthorizedRole = useBouncer(user, profile);
+
+  if (user === null) {
+    return children ? children : <Outlet />;
+  }
 
   if (userLoading || (user && profileLoading)) {
     return <LoadingScreen />;
   }
 
   // Unauthenticated guests -> allow access to guest route
-  if (!user || isUnauthorizedRole) {
+  if (!user) {
     return children ? children : <Outlet />;
   }
 
@@ -128,14 +106,17 @@ export const RequireDesigner = () => {
   const { data: user, isLoading: userLoading } = useCurrentUser();
   const { data: profile, isLoading: profileLoading } = useUserProfile(user?.id);
   const location = useLocation();
-  const isUnauthorizedRole = useBouncer(user, profile);
+
+  if (user === null) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
 
   if (userLoading || profileLoading) {
     return <LoadingScreen />;
   }
 
   // Step 1: Auth check
-  if (!user || isUnauthorizedRole) {
+  if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
@@ -152,14 +133,13 @@ export const OnboardingGuard = ({ children }) => {
   const { data: user, isLoading: userLoading } = useCurrentUser();
   const { data: profile, isLoading: profileLoading } = useUserProfile(user?.id);
   const location = useLocation();
-  const isUnauthorizedRole = useBouncer(user, profile);
+
+  if (user === null) {
+    return children;
+  }
 
   if (userLoading || (user && profileLoading)) {
     return <LoadingScreen />;
-  }
-
-  if (isUnauthorizedRole) {
-    return <Navigate to="/login" replace />;
   }
 
   if (!user) {
@@ -173,7 +153,10 @@ export const OnboardingGuard = ({ children }) => {
   const path = location.pathname;
 
   if (path === "/profile") {
-    if (state === "onboarding") return <Navigate to="/onboarding" replace />;
+    if (state === "onboarding") {
+      if (profile?.role === "user") return children;
+      return <Navigate to="/onboarding" replace />;
+    }
     return children;
   }
 

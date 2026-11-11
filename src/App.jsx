@@ -4,7 +4,9 @@ import Footer from "./components/Footer";
 import ScrollToTop from "./components/ScrollToTop";
 import { Toaster } from "react-hot-toast";
 
-import React, { Suspense } from "react";
+import React, { Suspense, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { supabase } from "./supabaseClient";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Connect from "./pages/Connect";
@@ -36,6 +38,42 @@ const PageLoader = () => (
 );
 
 function App() {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && typeof supabase?.auth?.onAuthStateChange === "function") {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        const isExpired = session?.expires_at ? session.expires_at < Date.now() / 1000 : false;
+        const isInvalid = !session || isExpired;
+
+        if (
+          event === "SIGNED_OUT" ||
+          (event === "TOKEN_REFRESHED" && isInvalid) ||
+          (event === "USER_UPDATED" && isInvalid)
+        ) {
+          queryClient.setQueryData(['auth', 'user'], null);
+          queryClient.setQueryData(['auth', 'session'], null);
+          queryClient.removeQueries({ queryKey: ['auth'] });
+          queryClient.removeQueries({ queryKey: ['users'] });
+          queryClient.clear();
+          try {
+            if (event !== "SIGNED_OUT") {
+              await supabase.auth.signOut();
+            }
+          } catch {
+            // ignore
+          }
+          localStorage.clear();
+          sessionStorage.clear();
+        }
+      });
+
+      return () => {
+        subscription?.unsubscribe?.();
+      };
+    }
+  }, [queryClient]);
+
   return (
     <Router>
       <ScrollToTop />

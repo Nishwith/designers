@@ -15,7 +15,7 @@ import {
 import toast from "react-hot-toast";
 import { useNavigate, Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { signOut } from "../services/authService";
+import { signOut, updateUserProfile } from "../services/authService";
 
 const CITY_OPTIONS = [
   "Hyderabad",
@@ -103,14 +103,11 @@ const UserProfile = () => {
       if (authError) throw authError;
 
       // 2. Update Public Users Table
-      await supabase
-        .from("users")
-        .update({
+      await updateUserProfile(user.id, {
           full_name: formData.fullName,
           phone: formData.phone,
           city: finalCity,
-        })
-        .eq("id", user.id);
+        });
 
       await queryClient.invalidateQueries({ queryKey: ["users"] });
       toast.success("Profile Updated!");
@@ -147,12 +144,7 @@ const UserProfile = () => {
       async (position) => {
         const { latitude, longitude } = position.coords;
         try {
-          const { error } = await supabase
-            .from("users")
-            .update({ location: `POINT(${longitude} ${latitude})` })
-            .eq("id", user.id);
-
-          if (error) throw error;
+          await updateUserProfile(user.id, { location: `POINT(${longitude} ${latitude})` });
           setHasLocation(true);
           toast.success("Service area location updated successfully!");
         } catch (err) {

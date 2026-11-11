@@ -43,16 +43,23 @@ import {
   ShieldCheck,
   AlertTriangle,
   Globe,
+  Eye,
   Sparkles
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { compressImage } from "../utils/imageCompression";
+import { compressImage, ALLOWED_IMAGE_MIME_TYPES } from "../utils/imageCompression";
+import { uploadPortfolioFile } from "../services/projectService";
 import { useQueryClient } from "@tanstack/react-query";
-import { signOut } from "../services/authService";
+import { signOut, updateUserProfile } from "../services/authService";
 import {
   isProfessionalProfileComplete,
 } from "../utils/designerApproval";
 import ProfessionalProfileReviewStatus from "../components/ProfessionalProfileReviewStatus";
+import { checkServerAdminAuthorization, isAdminAuthorizationRpcEnabled } from "../services/phase1aAuthorizationService";
+import { hideOwnDesignerProfile, isDesignerSelfHideRpcEnabled, updateOwnDesignerProfile } from "../services/designerProfileService";
+import { submitDesignerAccountRequest } from "../services/designerAccountRequestService";
+import { archiveInquiry } from "../services/designerInquiryService";
+import { getYouTubeEmbedUrl } from "../utils/videoUtils";
 
 // --- HELPER TO PARSE PROJECT JSON DATA ---
 const parseProjectCategory = (catStr) => {
@@ -87,6 +94,7 @@ const parseLeadMessage = (messageStr) => {
 
 // --- COMPONENT: ADD PROJECT MODAL (With Custom Rooms & Coupled Room Materials) ---
 const AddProjectModal = ({ onClose, onAdd, designerId }) => {
+  const [internalDesignerId, setInternalDesignerId] = useState(designerId);
   const [form, setForm] = useState({ title: "", place: "", description: "" });
   const [roomUploads, setRoomUploads] = useState({});
   const [roomMaterials, setRoomMaterials] = useState({});
@@ -94,6 +102,48 @@ const AddProjectModal = ({ onClose, onAdd, designerId }) => {
   const [uploading, setUploading] = useState(false);
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [customCategory, setCustomCategory] = useState("");
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  useEffect(() => {
+    if (designerId) {
+      setInternalDesignerId(designerId);
+      return;
+    }
+    let isMounted = true;
+    const fetchDesignerId = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user?.id) return;
+        const { data: designerRecord } = await supabase
+          .from("designers")
+          .select("id")
+          .eq("user_id", session.user.id)
+          .maybeSingle();
+        if (isMounted && designerRecord?.id) {
+          setInternalDesignerId(designerRecord.id);
+        }
+      } catch (err) {
+        console.error("Error proactively resolving designer ID:", err);
+      }
+    };
+    fetchDesignerId();
+    return () => { isMounted = false; };
+  }, [designerId]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
 
   const standardCategories = ["Living Room", "Kitchen", "Bedroom", "Bathroom", "Exterior", "Commercial Space"];
   const selectedCategories = Object.keys(roomUploads);
@@ -152,11 +202,25 @@ const AddProjectModal = ({ onClose, onAdd, designerId }) => {
 
   const handleFileSelect = (e, category) => {
     if (e.target.files && e.target.files.length > 0) {
-      const newFiles = Array.from(e.target.files);
-      setRoomUploads((prev) => ({
-        ...prev,
-        [category]: [...prev[category], ...newFiles]
-      }));
+      const incoming = Array.from(e.target.files);
+      const validFiles = incoming.filter((file) => {
+        if (file.size > 26214400) {
+          toast.error(`"${file.name}" exceeds the 25MB pre-upload limit.`);
+          return false;
+        }
+        if (!ALLOWED_IMAGE_MIME_TYPES.includes(file.type)) {
+          toast.error(`"${file.name}" is not a supported image format. Use JPEG, PNG, WebP, or AVIF.`);
+          return false;
+        }
+        return true;
+      });
+
+      if (validFiles.length > 0) {
+        setRoomUploads((prev) => ({
+          ...prev,
+          [category]: [...(prev[category] || []), ...validFiles]
+        }));
+      }
       e.target.value = "";
     }
   };
@@ -171,69 +235,120 @@ const AddProjectModal = ({ onClose, onAdd, designerId }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (selectedCategories.length === 0) return toast.error("Please select at least one room category.");
-    const hasImages = selectedCategories.some(cat => roomUploads[cat].length > 0);
+    const hasImages = selectedCategories.some(cat => (roomUploads[cat] || []).length > 0);
     if (!hasImages) return toast.error("Please upload at least one image for your selected rooms.");
 
     setUploading(true);
+    let projData = null;
+    const uploadedStoragePaths = [];
+
     try {
+      let resolvedDesignerId = internalDesignerId || designerId;
+      if (!resolvedDesignerId) {
+        const { data: { session } } = await supabase.auth.getSession();
+        const activeUserId = session?.user?.id;
+        if (!activeUserId) {
+          throw new Error("Authentication required to create a project.");
+        }
+        const { data: designerRecord, error: dError } = await supabase
+          .from("designers")
+          .select("id")
+          .eq("user_id", activeUserId)
+          .maybeSingle();
+        if (dError) throw dError;
+        if (!designerRecord?.id) {
+          throw new Error("Designer profile not found for authenticated user.");
+        }
+        resolvedDesignerId = designerRecord.id;
+        setInternalDesignerId(resolvedDesignerId);
+      }
+
       const projectDataString = JSON.stringify({
         categories: selectedCategories,
         description: form.description
       });
 
-      const { data: projData, error: projError } = await supabase
+      // Explicitly clean project payload (strip id, created_at, updated_at, is_verified, etc.)
+      const cleanProjectPayload = {
+        designer_id: resolvedDesignerId,
+        title: form.title?.trim() || "",
+        place: form.place?.trim() || "", 
+        project_category: projectDataString,
+        room_materials: roomMaterials,
+      };
+
+      const { data: createdProj, error: projError } = await supabase
         .from("designer_projects")
-        .insert({
-          designer_id: designerId,
-          title: form.title,
-          place: form.place, 
-          project_category: projectDataString,
-          room_materials: roomMaterials,
-          status: "approved",
-        })
+        .insert(cleanProjectPayload)
         .select()
         .single();
 
       if (projError) throw projError;
+      projData = createdProj;
 
       const uploadedImages = [];
       let isFirstImageCover = true; 
 
       for (const category of selectedCategories) {
-        const files = roomUploads[category];
+        const files = roomUploads[category] || [];
         for (let i = 0; i < files.length; i++) {
           const file = files[i];
-          const compressedFile = await compressImage(file, { maxWidth: 2048, quality: 0.8 });
-          const fileExt = compressedFile.name.split(".").pop();
-          const fileName = `${designerId}/${projData.id}/${category}_${Date.now()}_${i}.${fileExt}`;
-          const { error: uploadError } = await supabase.storage.from("portfolio").upload(fileName, compressedFile);
-          if (uploadError) throw uploadError;
+          const compressedFile = await compressImage(file, { maxWidth: 2048, quality: 0.82 });
+          const slugCategory = category.toLowerCase().replace(/[^a-z0-9]/g, '_');
+          const safeExt = compressedFile.type === 'image/webp' ? 'webp' : (compressedFile.name.split('.').pop() || 'jpg');
+          const storagePath = `${resolvedDesignerId}/${projData.id}/${slugCategory}_${Date.now()}_${i}.${safeExt}`;
 
-          const { data } = supabase.storage.from("portfolio").getPublicUrl(fileName);
+          const publicUrl = await uploadPortfolioFile(storagePath, compressedFile);
+          uploadedStoragePaths.push(storagePath);
+
           uploadedImages.push({
             project_id: projData.id,
-            image_url: data.publicUrl,
-            room_category: category, 
+            image_url: publicUrl,
+            room_category: category,
+            materials_used: Array.isArray(roomMaterials[category]) ? roomMaterials[category] : [],
             is_cover: isFirstImageCover,
           });
           isFirstImageCover = false; 
         }
       }
 
-      await supabase.from("project_images").insert(uploadedImages);
+      const { error: imgInsertError } = await supabase.from("project_images").insert(uploadedImages);
+      if (imgInsertError) throw imgInsertError;
+
       onAdd({ ...projData, project_images: uploadedImages });
       toast.success("Project Published Successfully!");
       onClose();
     } catch (error) {
-      toast.error("Upload failed: " + error.message);
+      // Atomic rollback: clean up uploaded storage objects and orphaned project row
+      if (uploadedStoragePaths.length > 0) {
+        try {
+          await supabase.storage.from("portfolio").remove(uploadedStoragePaths);
+        } catch (cleanupStorageError) {
+          console.error("Failed to clean up storage files after upload error:", cleanupStorageError);
+        }
+      }
+      if (projData?.id) {
+        try {
+          await supabase.from("designer_projects").delete().eq("id", projData.id);
+        } catch (cleanupDbError) {
+          console.error("Failed to delete orphaned project row after upload error:", cleanupDbError);
+        }
+      }
+      toast.error(`Upload failed: ${error.message || "Could not publish project"}. The project was not published.`);
     } finally {
       setUploading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4 animate-in fade-in transition-all">
-      <div className="bg-white border border-gray-200 w-full max-w-2xl rounded-2xl p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto no-scrollbar">
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in transition-all"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white border border-gray-200 w-full max-w-2xl rounded-2xl p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto no-scrollbar"
+        onClick={(e) => e.stopPropagation()}
+      >
         <button onClick={onClose} className="absolute top-6 right-6 text-gray-500 hover:text-gray-900 transition-colors">
           <X size={24} />
         </button>
@@ -363,7 +478,7 @@ const AddProjectModal = ({ onClose, onAdd, designerId }) => {
                     </span>
                   </div>
                   <div className="border-2 border-dashed border-gray-300 hover:border-brand-accent bg-white rounded-xl p-6 text-center relative transition-all group cursor-pointer mb-4">
-                    <input type="file" multiple accept="image/*" onChange={(e) => handleFileSelect(e, category)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                    <input type="file" multiple accept="image/jpeg,image/png,image/webp,image/avif,.jpg,.jpeg,.png,.webp,.avif" onChange={(e) => handleFileSelect(e, category)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                     <Upload className="text-gray-400 group-hover:text-brand-accent mx-auto mb-2 transition-colors" size={24} />
                     <p className="text-gray-600 text-sm font-medium">Click to upload <span className="lowercase">{category}</span> images</p>
                   </div>
@@ -464,6 +579,14 @@ const EditProjectModal = ({ project, designerId, onClose, onUpdate }) => {
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [customCategory, setCustomCategory] = useState("");
 
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
   const standardCategories = ["Living Room", "Kitchen", "Bedroom", "Bathroom", "Exterior", "Commercial Space"];
 
   useEffect(() => {
@@ -533,8 +656,25 @@ const EditProjectModal = ({ project, designerId, onClose, onUpdate }) => {
 
   const handleFileSelect = (e, category) => {
     if (e.target.files && e.target.files.length > 0) {
-      const newFiles = Array.from(e.target.files);
-      setRoomUploads((prev) => ({ ...prev, [category]: [...prev[category], ...newFiles] }));
+      const incoming = Array.from(e.target.files);
+      const validFiles = incoming.filter((file) => {
+        if (file.size > 26214400) {
+          toast.error(`"${file.name}" exceeds the 25MB pre-upload limit.`);
+          return false;
+        }
+        if (!ALLOWED_IMAGE_MIME_TYPES.includes(file.type)) {
+          toast.error(`"${file.name}" is not a supported image format. Use JPEG, PNG, WebP, or AVIF.`);
+          return false;
+        }
+        return true;
+      });
+
+      if (validFiles.length > 0) {
+        setRoomUploads((prev) => ({
+          ...prev,
+          [category]: [...(prev[category] || []), ...validFiles]
+        }));
+      }
       e.target.value = null;
     }
   };
@@ -556,50 +696,69 @@ const EditProjectModal = ({ project, designerId, onClose, onUpdate }) => {
     if (selectedCategories.length === 0) return toast.error("Select at least one room category.");
     
     setSaving(true);
+    const uploadedStoragePaths = [];
     try {
       const projectDataString = JSON.stringify({
         categories: selectedCategories,
         description: form.description
       });
 
-      await supabase
-        .from("designer_projects")
-        .update({ 
-          title: form.title, 
-          place: form.place,
-          project_category: projectDataString,
-          room_materials: roomMaterials
-        })
-        .eq("id", project.id);
+      // Explicitly clean project update payload
+      const cleanProjectUpdate = { 
+        title: form.title?.trim() || "", 
+        place: form.place?.trim() || "",
+        project_category: projectDataString,
+        room_materials: roomMaterials
+      };
 
-      if (imagesToDelete.length > 0) {
-        await supabase.from("project_images").delete().in('id', imagesToDelete);
+      const { error: projUpdateError } = await supabase
+        .from("designer_projects")
+        .update(cleanProjectUpdate)
+        .eq("id", project.id);
+      if (projUpdateError) throw projUpdateError;
+
+      // Keep materials_used synced across existing room images
+      for (const category of selectedCategories) {
+        const matList = Array.isArray(roomMaterials[category]) ? roomMaterials[category] : [];
+        await supabase
+          .from("project_images")
+          .update({ materials_used: matList })
+          .eq("project_id", project.id)
+          .eq("room_category", category);
       }
 
+      if (imagesToDelete.length > 0) {
+        const { error: deleteImgError } = await supabase.from("project_images").delete().in('id', imagesToDelete);
+        if (deleteImgError) throw deleteImgError;
+      }
+
+      const resolvedDesignerId = designerId || project.designer_id;
       const newImageRecords = [];
       for (const category of selectedCategories) {
-        const files = roomUploads[category];
+        const files = roomUploads[category] || [];
         for (let i = 0; i < files.length; i++) {
           const file = files[i];
-          const compressedFile = await compressImage(file, { maxWidth: 2048, quality: 0.8 });
-          const fileExt = compressedFile.name.split(".").pop();
-          const fileName = `${designerId}/${project.id}/${category}_${Date.now()}_${i}.${fileExt}`;
+          const compressedFile = await compressImage(file, { maxWidth: 2048, quality: 0.82 });
+          const slugCategory = category.toLowerCase().replace(/[^a-z0-9]/g, '_');
+          const safeExt = compressedFile.type === 'image/webp' ? 'webp' : (compressedFile.name.split('.').pop() || 'jpg');
+          const storagePath = `${resolvedDesignerId}/${project.id}/${slugCategory}_${Date.now()}_${i}.${safeExt}`;
           
-          const { error: uploadError } = await supabase.storage.from("portfolio").upload(fileName, compressedFile);
-          if (uploadError) throw uploadError;
+          const publicUrl = await uploadPortfolioFile(storagePath, compressedFile);
+          uploadedStoragePaths.push(storagePath);
 
-          const { data } = supabase.storage.from("portfolio").getPublicUrl(fileName);
           newImageRecords.push({ 
             project_id: project.id, 
-            image_url: data.publicUrl, 
+            image_url: publicUrl, 
             room_category: category,
+            materials_used: Array.isArray(roomMaterials[category]) ? roomMaterials[category] : [],
             is_cover: false 
           });
         }
       }
       
       if (newImageRecords.length > 0) {
-        await supabase.from("project_images").insert(newImageRecords);
+        const { error: imgInsertError } = await supabase.from("project_images").insert(newImageRecords);
+        if (imgInsertError) throw imgInsertError;
       }
 
       const finalImages = [...existingImages, ...newImageRecords];
@@ -612,16 +771,29 @@ const EditProjectModal = ({ project, designerId, onClose, onUpdate }) => {
       
       toast.success("Updated Successfully!");
       onClose();
-    } catch {
-      toast.error("Failed to update project.");
+    } catch (error) {
+      if (uploadedStoragePaths.length > 0) {
+        try {
+          await supabase.storage.from("portfolio").remove(uploadedStoragePaths);
+        } catch (cleanupStorageError) {
+          console.error("Failed to clean up storage files after edit error:", cleanupStorageError);
+        }
+      }
+      toast.error(`Failed to update project: ${error.message || "An error occurred."}`);
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4 animate-in fade-in transition-all">
-      <div className="bg-white border border-gray-200 w-full max-w-2xl rounded-2xl p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto no-scrollbar">
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in transition-all"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white border border-gray-200 w-full max-w-2xl rounded-2xl p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto no-scrollbar"
+        onClick={(e) => e.stopPropagation()}
+      >
         <button onClick={onClose} className="absolute top-6 right-6 text-gray-500 hover:text-gray-900 transition-colors">
           <X size={24} />
         </button>
@@ -728,7 +900,7 @@ const EditProjectModal = ({ project, designerId, onClose, onUpdate }) => {
                     )}
 
                     <div className="border-2 border-dashed border-gray-300 hover:border-brand-accent bg-white rounded-xl p-4 text-center relative transition-all cursor-pointer mb-4">
-                      <input type="file" multiple accept="image/*" onChange={(e) => handleFileSelect(e, category)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                      <input type="file" multiple accept="image/jpeg,image/png,image/webp,image/avif,.jpg,.jpeg,.png,.webp,.avif" onChange={(e) => handleFileSelect(e, category)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                       <Upload className="text-gray-400 mx-auto mb-1" size={20} />
                       <p className="text-gray-500 text-xs font-medium">Add more to {category}</p>
                     </div>
@@ -814,16 +986,15 @@ const EditProjectModal = ({ project, designerId, onClose, onUpdate }) => {
 
 
 
-const ClientContactDetails = ({ name, email, phone, city }) => {
+const ClientContactDetails = ({ name, email, phone }) => {
   const contactFields = [
     { label: "Client", value: name },
     { label: "Phone", value: phone, hrefPrefix: "tel:" },
     { label: "Email", value: email, hrefPrefix: "mailto:" },
-    { label: "City", value: city },
   ];
 
   return (
-    <div aria-label="Client contact details" className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <div aria-label="Client contact details" className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
       {contactFields.map(({ label, value, hrefPrefix }) => (
         <div key={label} className="min-w-0 bg-white border border-gray-200 p-3 rounded-xl flex items-center gap-3">
           <div className="min-w-0">
@@ -855,7 +1026,6 @@ const LeadCard = ({ lead, onStatusUpdate }) => {
   const clientName = clientDetails.client_name || lead.client_name;
   const clientPhone = clientDetails.client_phone || lead.client_phone;
   const clientEmail = clientDetails.client_email || lead.client_email;
-  const clientCity = clientDetails.client_city || lead.client_city;
 
   return (
     <div className={`bg-white border rounded-2xl p-6 shadow-sm hover:shadow-md transition-all relative overflow-hidden ${lead.status === "accepted" ? "border-emerald-200" : "border-gray-200"}`}>
@@ -895,7 +1065,6 @@ const LeadCard = ({ lead, onStatusUpdate }) => {
             name={clientName}
             phone={clientPhone}
             email={clientEmail}
-            city={clientCity}
           />
 
           <div className="mt-5 pt-5 border-t border-gray-100">
@@ -1022,14 +1191,19 @@ const DesignerDashboard = ({ profileOnly = false }) => {
   
   const [profileForm, setProfileForm] = useState({
     name: "", city: "", projects_completed: 0, about_text: "", experience_years: 0,
-    video_link: "", video_link_2: "", designer_type: "interior",
+    video_link: "", video_link_1: "", video_link_2: "", designer_type: "interior",
     style_tags: [], logo_url: "", phone: "", email: "", is_public: true
   });
   const [newTag, setNewTag] = useState("");
   const [logoFile, setLogoFile] = useState(null);
   const [user, setUser] = useState(null);
+  const [initialProfileData, setInitialProfileData] = useState(null);
+  const [profileErrors, setProfileErrors] = useState({});
+  const [profileLocationCoords, setProfileLocationCoords] = useState(null);
+  const [browserGpsCoords, setBrowserGpsCoords] = useState(null);
   const [updatingLocation, setUpdatingLocation] = useState(false);
   const [hasLocation, setHasLocation] = useState(false);
+  const [locationDriftAlert, setLocationDriftAlert] = useState(null);
   const [paymentPromptDismissed, setPaymentPromptDismissed] = useState(false);
 
   // --- Calculate Days Remaining & Expiry Warning State ---
@@ -1048,8 +1222,6 @@ const DesignerDashboard = ({ profileOnly = false }) => {
     !paymentPromptDismissed;
 
   // Subscription state affects publication eligibility, not dashboard access.
-  const isExpired = designer?.is_subscription_active === false && designer?.subscription_end && daysLeft < 0;
-
   const showWarningBanner = (designer?.is_subscription_active !== false) && Boolean(designer?.subscription_end) && (daysLeft >= 0 && daysLeft <= 7);
 
   useEffect(() => {
@@ -1067,12 +1239,44 @@ const DesignerDashboard = ({ profileOnly = false }) => {
           .maybeSingle();
         if (userRec?.location) {
           setHasLocation(true);
+          const match = typeof userRec.location === "string" && userRec.location.match(/POINT\(([-0-9.]+)\s+([-0-9.]+)\)/i);
+          if (match) {
+            setProfileLocationCoords({ lat: parseFloat(match[2]), lng: parseFloat(match[1]) });
+          }
+        } else if (designerData?.service_area_lat && designerData?.service_area_lng) {
+          setHasLocation(true);
+          setProfileLocationCoords({
+            lat: parseFloat(designerData.service_area_lat),
+            lng: parseFloat(designerData.service_area_lng),
+          });
+        }
+
+        // Silently probe browser GPS to detect location drift without intrusive popups
+        if (typeof navigator !== "undefined" && navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              setBrowserGpsCoords({
+                lat: pos.coords.latitude,
+                lng: pos.coords.longitude,
+              });
+            },
+            () => {},
+            { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+          );
         }
         
         let designerData;
         if (adminDesignerId) {
-          const { data: userData } = await supabase.from("users").select("role").eq("id", session.user.id).single();
-          if (userData?.role !== "admin") return navigate("/");
+          let isAdmin = false;
+          if (isAdminAuthorizationRpcEnabled()) {
+            const authorization = await checkServerAdminAuthorization(supabase);
+            isAdmin = authorization.authorized;
+          } else {
+            const { data: userData, error: roleError } = await supabase.from("users").select("role").eq("id", session.user.id).single();
+            if (roleError) throw roleError;
+            isAdmin = userData?.role === "admin";
+          }
+          if (!isAdmin) return navigate("/");
           const { data: targetDesigner } = await supabase.from("designers").select("*").eq("id", adminDesignerId).maybeSingle();
           designerData = targetDesigner;
         } else {
@@ -1087,10 +1291,31 @@ const DesignerDashboard = ({ profileOnly = false }) => {
 
         setDesigner(designerData);
         setIsProfileIncomplete(!isProfessionalProfileComplete(designerData));
+        const initialSnapshot = {
+          name: designerData.name || "",
+          city: designerData.city || "",
+          projects_completed: designerData.projects_completed ?? 0,
+          about_text: designerData.about_text || "",
+          experience_years: designerData.experience_years || 0,
+          video_link: (designerData.video_link_1 || designerData.video_link || "").trim(),
+          video_link_1: (designerData.video_link_1 || designerData.video_link || "").trim(),
+          video_link_2: (designerData.video_link_2 || "").trim(),
+          designer_type: designerData.designer_type || "interior",
+          style_tags: designerData.style_tags || [],
+          logo_url: designerData.logo_url || "",
+          phone: designerData.phone || "",
+          email: designerData.email || "",
+          is_public: designerData.is_public !== false,
+          videos_approved: designerData.videos_approved,
+          video_status: designerData.video_status,
+        };
+        setInitialProfileData(initialSnapshot);
         setProfileForm({
           name: designerData.name || "", city: designerData.city || "", projects_completed: designerData.projects_completed ?? 0,
           about_text: designerData.about_text || "", experience_years: designerData.experience_years || 0,
-          video_link: designerData.video_link || "", video_link_2: designerData.video_link_2 || "",
+          video_link: designerData.video_link_1 || designerData.video_link || "",
+          video_link_1: designerData.video_link_1 || designerData.video_link || "",
+          video_link_2: designerData.video_link_2 || "",
           designer_type: designerData.designer_type || "interior", style_tags: designerData.style_tags || [],
           logo_url: designerData.logo_url || "", phone: designerData.phone || "", email: designerData.email || "",
           is_public: designerData.is_public !== false
@@ -1302,11 +1527,11 @@ const DesignerDashboard = ({ profileOnly = false }) => {
   // Open the existing Razorpay checkout once when the admin verification
   const handleRequestRenewal = async () => {
     try {
-      await supabase.from("designers").update({ renewal_requested: true }).eq("id", designer.id);
-      setDesigner({ ...designer, renewal_requested: true });
+      await submitDesignerAccountRequest(supabase, "renewal");
+      setDesigner((current) => ({ ...current, renewal_requested: true }));
       toast.success("Renewal request sent to Admin!");
-    } catch {
-      toast.error("Failed to send request.");
+    } catch (error) {
+      toast.error(error.message || "Failed to send request.");
     }
   };
 
@@ -1319,43 +1544,125 @@ const DesignerDashboard = ({ profileOnly = false }) => {
     if (designer.featured_status === "featured" && featDaysLeft > 5) return toast.success("You are already featured!");
     if (designer.featured_status === "requested") return toast.success("Request already sent.");
     try {
-      await supabase.from("designers").update({ featured_status: "requested" }).eq("id", designer.id);
-      setDesigner({ ...designer, featured_status: "requested" });
+      await submitDesignerAccountRequest(supabase, "featured");
+      setDesigner((current) => ({ ...current, featured_status: "requested" }));
       toast.success("Request sent to Admin! We will contact you soon.");
-    } catch {
-      toast.error("Request failed");
+    } catch (error) {
+      toast.error(error.message || "Request failed");
     }
   };
 
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
-    const normalizedAbout = profileForm.about_text.trim();
-    const projectsCompleted = Number(profileForm.projects_completed);
-    if (profileOnly && (!normalizedAbout || !Number.isInteger(projectsCompleted) || projectsCompleted < 0)) {
-      toast.error("Enter a valid completed-project count and an About description before submitting.");
+    const missingFields = [];
+    const errors = {};
+
+    if (!profileForm.name?.trim()) {
+      missingFields.push("Brand Name");
+      errors.name = "Brand Name is required.";
+    }
+    if (!profileForm.city?.trim()) {
+      missingFields.push("City");
+      errors.city = "City is required.";
+    }
+    if (!profileForm.designer_type) {
+      missingFields.push("Designer Type");
+      errors.designer_type = "Designer Type is required.";
+    }
+    
+    // Check Experience negative value
+    const expValue = profileForm.experience_years !== "" && profileForm.experience_years !== undefined && profileForm.experience_years !== null
+      ? Number(profileForm.experience_years)
+      : NaN;
+    if (isNaN(expValue)) {
+      missingFields.push("Experience (Years)");
+      errors.experience_years = "Experience is required.";
+    } else if (expValue < 0) {
+      errors.experience_years = "Experience cannot be a negative value.";
+      setProfileErrors(errors);
+      toast.error("Experience cannot be a negative value.");
       return;
     }
+
+    // Check Service Area / Lat-Long
+    if (!hasLocation && !profileLocationCoords && !designer?.location) {
+      missingFields.push("Service Area");
+      errors.service_area = "Service Area location is required.";
+    }
+
+    const normalizedAbout = profileForm.about_text?.trim() || "";
+    if (!normalizedAbout) {
+      missingFields.push("About");
+      errors.about_text = "About description is required.";
+    }
+
+    const projectsCompleted = profileForm.projects_completed !== "" && profileForm.projects_completed !== undefined && profileForm.projects_completed !== null
+      ? Number(profileForm.projects_completed)
+      : NaN;
+    if (isNaN(projectsCompleted) || projectsCompleted < 0) {
+      missingFields.push("Total Projects Completed");
+      errors.projects_completed = "Valid completed projects count is required.";
+    }
+
+    if (missingFields.length > 0) {
+      setProfileErrors(errors);
+      toast.error(`Please fill in the following required fields: ${missingFields.join(", ")}`);
+      return;
+    }
+    setProfileErrors({});
+
     setUploading(true);
     try {
       let finalUrl = profileForm.logo_url;
       if (logoFile) {
-        const fileExt = logoFile.name.split('.').pop();
+        const fileExt = logoFile.name.split('.').pop() || 'png';
         const fileName = `logos/${designer.id}_${Date.now()}.${fileExt}`;
-        const { error: uploadError } = await supabase.storage.from("portfolio").upload(fileName, logoFile);
-        if (uploadError) throw uploadError;
-        finalUrl = supabase.storage.from("portfolio").getPublicUrl(fileName).data.publicUrl;
+        finalUrl = await uploadPortfolioFile(fileName, logoFile);
       }
-      const updatePayload = {
-        name: profileForm.name, city: profileForm.city, projects_completed: parseInt(profileForm.projects_completed) || 0, about_text: profileOnly ? normalizedAbout : profileForm.about_text,
-        experience_years: parseInt(profileForm.experience_years) || 0, video_link: profileForm.video_link,
-        video_link_2: profileForm.video_link_2, designer_type: profileForm.designer_type,
-        phone: profileForm.phone, email: profileForm.email, style_tags: profileForm.style_tags, logo_url: finalUrl,
-        is_public: isExpired ? false : profileForm.is_public // Automatically lock to false if expired
+      // Strip all protected/admin columns (id, user_id, is_verified, is_public,
+      // priority_score, featured_status, subscription_end, rating_avg)
+      const cleanPayload = {
+        name: profileForm.name.trim(),
+        city: profileForm.city.trim(),
+        projects_completed: parseInt(profileForm.projects_completed) || 0,
+        about_text: profileOnly ? normalizedAbout : profileForm.about_text,
+        experience_years: parseInt(profileForm.experience_years) || 0,
+        video_link: (profileForm.video_link_1 || profileForm.video_link || "").trim() || null,
+        video_link_1: (profileForm.video_link_1 || profileForm.video_link || "").trim() || null,
+        video_link_2: (profileForm.video_link_2 || "").trim() || null,
+        designer_type: profileForm.designer_type,
+        phone: profileForm.phone,
+        email: profileForm.email,
+        style_tags: profileForm.style_tags,
+        logo_url: finalUrl,
       };
-      const { error: updateError } = await supabase.from("designers").update(updatePayload).eq("id", designer.id);
+
+      // Strictly compare new video inputs against initialProfileData
+      const originalVideo1 = (initialProfileData?.video_link_1 ?? initialProfileData?.video_link ?? designer?.video_link_1 ?? designer?.video_link ?? "").trim();
+      const originalVideo2 = (initialProfileData?.video_link_2 ?? designer?.video_link_2 ?? "").trim();
+      const currentVideo1 = (profileForm.video_link_1 ?? profileForm.video_link ?? "").trim();
+      const currentVideo2 = (profileForm.video_link_2 ?? "").trim();
+
+      const video1Changed = currentVideo1 !== originalVideo1;
+      const video2Changed = currentVideo2 !== originalVideo2;
+
+      if (video1Changed || video2Changed) {
+        cleanPayload.videos_approved = false;
+        cleanPayload.video_status = "Not yet open";
+      }
+
+      const updateQuery = supabase
+        .from("designers")
+        .update(cleanPayload);
+      const targetUserId = user?.id || designer.user_id;
+      const finalQuery = (!adminDesignerId && targetUserId && typeof updateQuery?.eq === "function")
+        ? updateQuery.eq("user_id", targetUserId)
+        : updateQuery.eq("id", designer.id);
+      const { error: updateError } = await finalQuery;
       if (updateError) throw updateError;
-      const updatedDesigner = { ...designer, ...updatePayload };
+      const updatedDesigner = { ...designer, ...cleanPayload };
       setDesigner(updatedDesigner);
+      setInitialProfileData((prev) => ({ ...(prev || {}), ...cleanPayload }));
       setIsProfileIncomplete(!isProfessionalProfileComplete(updatedDesigner));
       if (profileOnly) {
         queryClient.setQueryData(["users", user.id], (currentProfile) => ({
@@ -1375,13 +1682,43 @@ const DesignerDashboard = ({ profileOnly = false }) => {
     }
   };
 
+  const handleToggleVisibility = async (newVisibility) => {
+    const isPublic = newVisibility === "public";
+    try {
+      if (!isPublic) {
+        const { data, error } = await supabase.rpc("designer_hide_own_profile");
+        if (error) {
+          // Fallback direct update if RPC is unavailable
+          const { error: updateError } = await supabase
+            .from("designers")
+            .update({ is_public: false })
+            .eq("id", designer.id);
+          if (updateError) throw updateError;
+        } else if (data !== true) {
+          throw new Error("Could not update profile visibility.");
+        }
+      } else {
+        const { error: updateError } = await supabase
+          .from("designers")
+          .update({ is_public: true })
+          .eq("id", designer.id);
+        if (updateError) throw updateError;
+      }
+      setDesigner((current) => ({ ...current, is_public: isPublic }));
+      setProfileForm((current) => ({ ...current, is_public: isPublic }));
+      await queryClient.invalidateQueries({ queryKey: ["users", user?.id], exact: true });
+      toast.success(isPublic ? "Profile is now public and visible in directory." : "Profile is now private and hidden.");
+    } catch (error) {
+      toast.error(error.message || "Could not update visibility.");
+    }
+  };
+
   const handleStatusUpdate = async (id, status) => {
     try {
       if (status === "delete") {
-        const { error } = await supabase.from("connections").delete().eq("id", id);
-        if (error) throw error;
+        await archiveInquiry(supabase, id);
         setLeads(prev => prev.filter(l => l.id !== id));
-        toast.success("Connection permanently deleted.");
+        toast.success("Inquiry archived successfully.");
       } else {
         const timestamp = new Date().toISOString();
         const { error } = await supabase.from("connections").update({ status, updated_at: timestamp }).eq("id", id);
@@ -1417,12 +1754,43 @@ const DesignerDashboard = ({ profileOnly = false }) => {
   
   const handleLogout = async () => { 
     try {
-      await signOut(); 
+      await signOut(queryClient, navigate, "/login");
+    } catch (error) {
+      console.warn("Server signout failed, forcing local cleanup", error);
+      queryClient.setQueryData(['auth', 'user'], null);
+      queryClient.setQueryData(['auth', 'session'], null);
       queryClient.clear();
-      localStorage.clear(); 
-      navigate("/login"); 
-    } catch {
-      // fallback
+      localStorage.clear();
+      sessionStorage.clear();
+      navigate("/login", { replace: true });
+    }
+  };
+
+  const calculateDriftKm = (lat1, lon1, lat2, lon2) => {
+    const R = 6371; // Earth radius in km
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
+  const executeLocationSave = async (userId, latitude, longitude) => {
+    try {
+      await updateUserProfile(userId, { location: `POINT(${longitude} ${latitude})` });
+      setHasLocation(true);
+      setProfileLocationCoords({ lat: latitude, lng: longitude });
+      setLocationDriftAlert(null);
+      toast.success("Service area location updated successfully!");
+    } catch (err) {
+      toast.error("Failed to update location: " + (err.message || "Unknown error"));
+    } finally {
+      setUpdatingLocation(false);
     }
   };
 
@@ -1442,20 +1810,28 @@ const DesignerDashboard = ({ profileOnly = false }) => {
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude } = position.coords;
-        try {
-          const { error } = await supabase
-            .from("users")
-            .update({ location: `POINT(${longitude} ${latitude})` })
-            .eq("id", currentUserId);
 
-          if (error) throw error;
-          setHasLocation(true);
-          toast.success("Service area location updated successfully!");
-        } catch (err) {
-          toast.error("Failed to update location: " + (err.message || "Unknown error"));
-        } finally {
-          setUpdatingLocation(false);
+        // Check distance drift if existing coordinates are known (> 100m / 0.1km threshold)
+        if (profileLocationCoords?.lat != null && profileLocationCoords?.lng != null) {
+          const driftKm = calculateDriftKm(
+            profileLocationCoords.lat,
+            profileLocationCoords.lng,
+            latitude,
+            longitude
+          );
+          if (driftKm > 0.1) {
+            setUpdatingLocation(false);
+            setLocationDriftAlert({
+              driftKm: driftKm < 1 ? `${Math.round(driftKm * 1000)} meters` : `${driftKm.toFixed(1)} km`,
+              newLat: latitude,
+              newLng: longitude,
+              currentUserId,
+            });
+            return;
+          }
         }
+
+        await executeLocationSave(currentUserId, latitude, longitude);
       },
       (geoError) => {
         setUpdatingLocation(false);
@@ -1480,64 +1856,181 @@ const DesignerDashboard = ({ profileOnly = false }) => {
           {logoFile ? <img src={URL.createObjectURL(logoFile)} className="w-full h-full object-cover" /> : <img src={designer?.logo_url} className="w-full h-full object-cover" />}
         </div>
         <div>
-          <input type="file" onChange={(e) => setLogoFile(e.target.files[0])} className="hidden" id="logoUpload" />
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/avif,.jpg,.jpeg,.png,.webp,.avif"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                if (file.size > 26214400) {
+                  toast.error(`"${file.name}" exceeds the 25MB pre-upload limit.`);
+                  return;
+                }
+                if (!ALLOWED_IMAGE_MIME_TYPES.includes(file.type)) {
+                  toast.error(`"${file.name}" is not a supported image format. Use JPEG, PNG, WebP, or AVIF.`);
+                  return;
+                }
+                setLogoFile(file);
+              }
+            }}
+            className="hidden"
+            id="logoUpload"
+          />
           <label htmlFor="logoUpload" className="bg-gray-100 hover:bg-gray-200 text-gray-900 px-4 py-2 rounded-xl text-sm font-bold cursor-pointer">Change Logo</label>
         </div>
       </div>
       
-      {/* --- NEW VISIBILITY TOGGLE --- */}
-      <div className="bg-blue-50/50 p-5 rounded-xl border border-blue-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-            <Globe size={16} className="text-blue-500"/> Profile Visibility
-          </h4>
-          <p className="text-xs text-gray-500 mt-1">
-            {isExpired 
-              ? "Your subscription has expired. Your profile is automatically set to Private until renewed."
-              : "When Public, clients can discover and view your profile in the directory."}
-          </p>
+      {/* Profile Visibility toggle: available ONLY in the Edit Profile tab */}
+      {!profileOnly && (
+        <div className="bg-gray-50 p-5 rounded-xl border border-gray-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+              <Eye size={16} className="text-gray-600" /> Profile Visibility
+            </h4>
+            <p className="text-xs text-gray-500 mt-1">
+              {designer?.is_public !== false
+                ? "Your profile is public and visible in the directory."
+                : "Your profile is currently private and hidden from search."}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <select
+              value={designer?.is_public === false ? "private" : "public"}
+              onChange={(e) => handleToggleVisibility(e.target.value)}
+              aria-label="Profile Visibility"
+              className="bg-white border border-gray-300 rounded-xl px-4 py-2 text-sm font-semibold text-gray-800 focus:outline-none focus:border-brand-accent shadow-sm cursor-pointer"
+            >
+              <option value="public">Public (Visible)</option>
+              <option value="private">Private (Hidden)</option>
+            </select>
+          </div>
         </div>
-        <select 
-          className="bg-white border border-gray-200 rounded-lg p-2 text-sm font-bold text-gray-900 outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          value={isExpired ? "private" : (profileForm.is_public ? "public" : "private")}
-          disabled={isExpired}
-          onChange={(e) => setProfileForm({ ...profileForm, is_public: e.target.value === "public" })}
-        >
-          <option value="public">Public (Visible)</option>
-          <option value="private">Private (Hidden)</option>
-        </select>
-      </div>
+      )}
 
       {/* --- SERVICE AREA LOCATION --- */}
-      <div className="bg-emerald-50/50 p-5 rounded-xl border border-emerald-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-            <MapPin size={16} className="text-emerald-600" /> Set My Service Area
-          </h4>
-          <p className="text-xs text-gray-500 mt-1">
-            {hasLocation
-              ? "Your service location is set. Homeowners in your service area can connect with you."
-              : "Capture your GPS coordinates to allow clients in your service region to discover you."}
-          </p>
+      {(() => {
+        const hasDrift = Boolean(
+          browserGpsCoords &&
+          profileLocationCoords &&
+          calculateDriftKm(
+            profileLocationCoords.lat,
+            profileLocationCoords.lng,
+            browserGpsCoords.lat,
+            browserGpsCoords.lng
+          ) > 0.1
+        );
+
+        let containerClass = "p-5 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all";
+        let titleIconColor = "text-emerald-600";
+        let description = "";
+        let buttonClass = "";
+        let buttonLabel = "";
+
+        if (!hasLocation) {
+          // State 1: No location set
+          containerClass += " bg-orange-50/70 border-orange-200";
+          titleIconColor = "text-brand-accent";
+          description = "Please give your location to get the nearby clients.";
+          buttonClass = "bg-brand-accent hover:bg-orange-600 text-white font-bold px-5 py-2.5 rounded-xl text-sm flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 shadow-md shrink-0 cursor-pointer";
+          buttonLabel = "Please give your location to get the nearby clients";
+        } else if (hasDrift) {
+          // State 3: Drift > 100m
+          containerClass += " bg-amber-50 border-amber-300";
+          titleIconColor = "text-amber-600";
+          description = "Significant location drift detected (>100m). Update your service area to connect with nearby clients.";
+          buttonClass = "bg-amber-600 hover:bg-amber-700 text-white font-bold px-5 py-2.5 rounded-xl text-sm flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 shadow-md shrink-0 cursor-pointer";
+          buttonLabel = "New location? Update the location";
+        } else {
+          // State 2: Has location, drift <= 100m
+          containerClass += " bg-emerald-50/50 border-emerald-100";
+          titleIconColor = "text-emerald-600";
+          description = `Service location configured ${
+            profileLocationCoords
+              ? `(Lat: ${profileLocationCoords.lat.toFixed(4)}, Lng: ${profileLocationCoords.lng.toFixed(4)})`
+              : "(GPS coordinates active)"
+          }. Homeowners in your service area can connect with you.`;
+          buttonClass = "bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 hover:text-gray-900 font-semibold px-5 py-2.5 rounded-xl text-sm flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 shadow-xs shrink-0 cursor-pointer";
+          buttonLabel = "Update Location";
+        }
+
+        return (
+          <div className={containerClass}>
+            <div>
+              <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                <MapPin size={16} className={titleIconColor} /> Set My Service Area
+              </h4>
+              <p className="text-xs text-gray-600 mt-1">{description}</p>
+            </div>
+            <button
+              type="button"
+              disabled={updatingLocation}
+              onClick={handleUpdateLocation}
+              aria-label={updatingLocation ? "Updating..." : buttonLabel}
+              className={buttonClass}
+            >
+              {updatingLocation ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <MapPin size={16} />
+              )}
+              {updatingLocation ? "Updating..." : buttonLabel}
+            </button>
+          </div>
+        );
+      })()}
+
+      {/* --- LOCATION DRIFT ALERT (> 100M) --- */}
+      {locationDriftAlert && (
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-5 shadow-sm space-y-3 animate-in fade-in">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={20} />
+            <div>
+              <h5 className="font-bold text-amber-900 text-sm">
+                Significant Location Change Detected ({locationDriftAlert.driftKm} drift)
+              </h5>
+              <p className="text-xs text-amber-800 mt-1">
+                Your new location coordinates are approximately <strong>{locationDriftAlert.driftKm}</strong> away from your currently registered service area. If you are permanently relocating your primary service area, you can confirm this update below or submit an admin request to adjust your primary city.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            <button
+              type="button"
+              onClick={() =>
+                executeLocationSave(
+                  locationDriftAlert.currentUserId,
+                  locationDriftAlert.newLat,
+                  locationDriftAlert.newLng
+                )
+              }
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs transition-colors shadow-xs"
+            >
+              Confirm New Service Area
+            </button>
+            <button
+              type="button"
+              onClick={() => setLocationDriftAlert(null)}
+              className="px-4 py-2 bg-white border border-amber-300 hover:bg-amber-100/50 text-amber-900 font-bold rounded-xl text-xs transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
-        <button
-          type="button"
-          disabled={updatingLocation}
-          onClick={handleUpdateLocation}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50 shadow-sm shrink-0"
-        >
-          {updatingLocation ? (
-            <Loader2 size={16} className="animate-spin" />
-          ) : (
-            <MapPin size={16} />
-          )}
-          {updatingLocation
-            ? "Updating..."
-            : hasLocation
-            ? "Update Location"
-            : "Set My Service Area"}
-        </button>
-      </div>
+      )}
+
+      {/* Form Validation Errors Alert */}
+      {Object.keys(profileErrors).length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm space-y-1">
+          <p className="font-bold flex items-center gap-1.5">
+            <AlertTriangle size={16} className="text-red-600" /> Please fix the following errors before submitting:
+          </p>
+          <ul className="list-disc list-inside space-y-0.5 text-xs text-red-600 pl-2">
+            {Object.values(profileErrors).map((err, idx) => (
+              <li key={idx}>{err}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50/50 p-4 rounded-xl border border-gray-200/50">
         <div className="opacity-70"><label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1"><Mail size={10} /> Email <Lock size={10} /></label><p className="text-gray-900 font-mono text-sm truncate">{profileForm.email}</p></div>
@@ -1548,7 +2041,7 @@ const DesignerDashboard = ({ profileOnly = false }) => {
         <div><label className="text-xs font-bold text-gray-500 uppercase">City</label><input type="text" className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-gray-900 mt-1" value={profileForm.city} onChange={(e) => setProfileForm({ ...profileForm, city: e.target.value })} /></div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div><label className="text-xs font-bold text-gray-500 uppercase">Experience (Years)</label><input type="number" className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-gray-900 mt-1" value={profileForm.experience_years} onChange={(e) => setProfileForm({ ...profileForm, experience_years: e.target.value })} /></div>
+        <div><label className="text-xs font-bold text-gray-500 uppercase">Experience (Years)</label><input type="number" min="0" className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-gray-900 mt-1" value={profileForm.experience_years} onChange={(e) => setProfileForm({ ...profileForm, experience_years: e.target.value })} /></div>
         <div><label className="text-xs font-bold text-gray-500 uppercase">Type</label><select className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-gray-900 mt-1" value={profileForm.designer_type} onChange={(e) => setProfileForm({ ...profileForm, designer_type: e.target.value })}><option value="interior">Interior</option><option value="commercial">Commercial</option><option value="both">Both</option></select></div>
       </div>
       <div>
@@ -1563,10 +2056,88 @@ const DesignerDashboard = ({ profileOnly = false }) => {
       </div>
       <div><label className="text-xs font-bold text-gray-500 uppercase">Total Projects Completed</label><input type="number" min="0" className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-gray-900 mt-1" value={profileForm.projects_completed} onChange={(e) => setProfileForm({ ...profileForm, projects_completed: e.target.value })} /></div>
       <div><label htmlFor="designer-about-text" className="text-xs font-bold text-gray-500 uppercase">About</label><textarea id="designer-about-text" rows="4" className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-gray-900 mt-1" value={profileForm.about_text} onChange={(e) => setProfileForm({ ...profileForm, about_text: e.target.value })} /></div>
-      <div className="space-y-4">
-        <label className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2"><Video size={14} /> Video Intros (Optional)</label>
-        <input type="url" placeholder="Video Link 1 (Youtube/Vimeo)" className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-gray-900" value={profileForm.video_link} onChange={(e) => setProfileForm({ ...profileForm, video_link: e.target.value })} />
-        <input type="url" placeholder="Video Link 2 (Youtube/Vimeo)" className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-gray-900" value={profileForm.video_link_2} onChange={(e) => setProfileForm({ ...profileForm, video_link_2: e.target.value })} />
+      <div className="space-y-3 pt-1">
+        <label className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
+          <Video size={14} /> Video Showcase
+        </label>
+
+        {/* Compact video previews side-by-side if links exist */}
+        {(getYouTubeEmbedUrl(profileForm.video_link_1 || profileForm.video_link || designer?.video_link_1 || designer?.video_link) ||
+          getYouTubeEmbedUrl(profileForm.video_link_2 || designer?.video_link_2)) && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {getYouTubeEmbedUrl(profileForm.video_link_1 || profileForm.video_link || designer?.video_link_1 || designer?.video_link) && (
+              <div className="space-y-1">
+                <div className="aspect-video max-h-36 bg-black rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+                  <iframe
+                    src={getYouTubeEmbedUrl(profileForm.video_link_1 || profileForm.video_link || designer?.video_link_1 || designer?.video_link)}
+                    className="w-full h-full"
+                    title="Video 1 preview"
+                    allowFullScreen
+                    loading="lazy"
+                    referrerPolicy="strict-origin-when-cross-origin"
+                  />
+                </div>
+                <p className="text-[10px] text-gray-500 font-medium truncate">Video 1 Preview</p>
+              </div>
+            )}
+            {getYouTubeEmbedUrl(profileForm.video_link_2 || designer?.video_link_2) && (
+              <div className="space-y-1">
+                <div className="aspect-video max-h-36 bg-black rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+                  <iframe
+                    src={getYouTubeEmbedUrl(profileForm.video_link_2 || designer?.video_link_2)}
+                    className="w-full h-full"
+                    title="Video 2 preview"
+                    allowFullScreen
+                    loading="lazy"
+                    referrerPolicy="strict-origin-when-cross-origin"
+                  />
+                </div>
+                <p className="text-[10px] text-gray-500 font-medium truncate">Video 2 Preview</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Inputs side-by-side in a compact 2-column grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="text-[11px] font-bold text-gray-500 uppercase block mb-1">
+              Video Link 1 (For Admin Review)
+            </label>
+            <input
+              type="url"
+              placeholder="https://youtube.com/watch?v=..."
+              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-gray-900 text-sm"
+              value={profileForm.video_link_1 ?? ""}
+              onChange={(e) => {
+                const val = e.target.value;
+                setProfileForm((prev) => ({
+                  ...prev,
+                  video_link_1: val,
+                  video_link: val,
+                }));
+              }}
+            />
+          </div>
+          <div>
+            <label className="text-[11px] font-bold text-gray-500 uppercase block mb-1">
+              Video Link 2 (For Admin Review)
+            </label>
+            <input
+              type="url"
+              placeholder="https://youtube.com/watch?v=..."
+              className="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-gray-900 text-sm"
+              value={profileForm.video_link_2 ?? ""}
+              onChange={(e) => {
+                const val = e.target.value;
+                setProfileForm((prev) => ({
+                  ...prev,
+                  video_link_2: val,
+                }));
+              }}
+            />
+          </div>
+        </div>
       </div>
       <button type="submit" disabled={uploading} className="w-full bg-brand-accent hover:bg-orange-600 text-white font-bold py-3.5 rounded-xl disabled:opacity-50 shadow-lg">{uploading ? <Loader2 className="animate-spin mx-auto" /> : profileOnly ? "Submit profile for review" : "Save Changes"}</button>
     </form>
@@ -1609,7 +2180,7 @@ const DesignerDashboard = ({ profileOnly = false }) => {
         
         <div className={`md:hidden fixed top-0 w-full bg-white border-b border-gray-200 z-40 p-4 flex justify-between items-center ${adminDesignerId ? 'mt-8' : ''}`}>
           <div className="flex items-center gap-2 text-brand-accent font-bold text-lg"><Briefcase size={20} /> Designer Dashboard</div>
-          <button onClick={handleLogout} className="bg-red-50 text-red-500 p-2 rounded-lg border border-red-100"><LogOut size={18} /></button>
+          <button onClick={handleLogout} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-100 flex items-center gap-1.5 text-xs font-bold transition-colors cursor-pointer" title="Logout"><LogOut size={16} /> <span>Logout</span></button>
         </div>
 
         <aside className={`hidden md:flex w-72 bg-white border-r border-gray-200 flex-col p-6 sticky top-0 h-screen overflow-y-auto ${adminDesignerId ? 'pt-12' : ''}`}>
@@ -1629,7 +2200,7 @@ const DesignerDashboard = ({ profileOnly = false }) => {
             <button onClick={() => setActiveTab("billing")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${activeTab === "billing" ? "bg-gray-900 text-white shadow-md" : "text-gray-600 hover:bg-gray-100"}`}><CreditCard size={20} /> Billing & Marketing</button>
             <button onClick={() => setActiveTab("settings")} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${activeTab === "settings" ? "bg-gray-900 text-white shadow-md" : "text-gray-600 hover:bg-gray-100"}`}><Settings size={20} /> Edit Profile</button>
           </div>
-          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-red-600 hover:bg-red-50 mt-auto border border-transparent hover:border-red-200 transition-colors"><LogOut size={20} /> Sign Out</button>
+          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-red-600 hover:bg-red-50 mt-auto border border-transparent hover:border-red-200 transition-colors cursor-pointer"><LogOut size={20} /> Logout</button>
         </aside>
         
         <main className={`flex-1 p-4 md:p-8 mt-16 md:mt-0 mb-20 md:mb-0 overflow-y-auto h-[calc(100vh-140px)] md:h-screen ${adminDesignerId ? 'md:pt-16' : ''}`}>
@@ -1755,12 +2326,16 @@ const DesignerDashboard = ({ profileOnly = false }) => {
       </div>
 
       {showActivationPrompt && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm animate-in fade-in">
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-in fade-in"
+          onClick={() => setPaymentPromptDismissed(true)}
+        >
           <section
             role="dialog"
             aria-modal="true"
             aria-labelledby="activation-prompt-title"
             className="relative w-full max-w-md space-y-6 rounded-3xl border border-gray-200 bg-white p-8 text-center shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
           >
             <button
               type="button"

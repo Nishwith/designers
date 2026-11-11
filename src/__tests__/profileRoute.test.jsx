@@ -70,6 +70,16 @@ describe("ProfileRoute", () => {
     expect(await screen.findByText("User profile settings")).toBeInTheDocument();
   });
 
+  it("allows standard users without designer profile to render profile route", async () => {
+    authState.profile = {
+      role: "user",
+      designer: null,
+      application: null,
+    };
+    renderProfileRoute();
+    expect(await screen.findByText("User profile settings")).toBeInTheDocument();
+  });
+
   it("sends a new signup without records to collaboration onboarding", async () => {
     authState.profile = { role: "designer", designer: null, application: null };
     renderProfileRoute();

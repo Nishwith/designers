@@ -16,27 +16,34 @@ const Navbar = () => {
 
   const handleLogout = async () => {
     try {
-      await signOut();
-      queryClient.clear();
       setIsOpen(false);
-      navigate("/login");
-    } catch {
-      // Fail silently or toast error
+      await signOut(queryClient, navigate, "/login");
+    } catch (error) {
+      console.warn("Server signout failed, forcing local cleanup", error);
+      if (queryClient) {
+        queryClient.setQueryData(['auth', 'user'], null);
+        queryClient.setQueryData(['auth', 'session'], null);
+        queryClient.clear();
+      }
+      localStorage.clear();
+      sessionStorage.clear();
+      navigate("/login", { replace: true });
     }
   };
 
   const role = profile?.role || "client";
   const loading = userLoading || (user && profileLoading);
+  const isDesigner = Boolean(profile?.designer || role === "designer");
 
   const actionLink =
     role === "admin"
       ? { text: "Admin Panel", path: "/admin", icon: <ShieldAlert size={18} /> }
-      : role === "designer"
-      ? { text: "Designer Dashboard", path: "/dashboard", icon: null }
-      : { text: "Designer? Join us", path: "/register", icon: null };
+      : isDesigner
+      ? { text: "Go to Dashboard", path: "/dashboard", icon: null }
+      : { text: "Are you a designer? Join us", path: "/onboarding", icon: null };
 
   return (
-    <nav className="bg-white/95 backdrop-blur-lg border-b border-gray-200 fixed w-full z-[100] top-0 shadow-sm transition-all">
+    <nav className="bg-white/95 backdrop-blur-lg border-b border-gray-200 fixed w-full z-50 top-0 shadow-sm transition-all">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 md:h-20">
           <Link to="/" className="flex items-center gap-3 group">
@@ -56,14 +63,12 @@ const Navbar = () => {
             >
               FAQs
             </Link>
-            {role !== "client" && (
-              <Link
-                to={actionLink.path}
-                className="flex items-center gap-2 font-semibold text-brand-accent transition-colors"
-              >
-                {actionLink.icon} {actionLink.text}
-              </Link>
-            )}
+            <Link
+              to={actionLink.path}
+              className="flex items-center gap-2 font-semibold text-brand-accent transition-colors"
+            >
+              {actionLink.icon} {actionLink.text}
+            </Link>
             
             {loading ? (
               <div className="flex items-center justify-center pl-6">
@@ -84,9 +89,11 @@ const Navbar = () => {
                 </Link>
                 <button
                   onClick={handleLogout}
-                  className="text-gray-400 hover:text-red-500 cursor-pointer transition-colors p-2"
+                  className="flex items-center gap-1.5 text-gray-500 hover:text-red-600 font-semibold text-sm cursor-pointer transition-colors px-3 py-1.5 rounded-lg hover:bg-red-50 border border-transparent hover:border-red-100"
+                  title="Logout"
                 >
-                  <LogOut size={20} />
+                  <LogOut size={16} />
+                  <span>Logout</span>
                 </button>
               </div>
             ) : (
@@ -135,15 +142,13 @@ const Navbar = () => {
           >
             FAQs
           </Link>
-          {role !== "client" && (
-            <Link
-              to={actionLink.path}
-              onClick={() => setIsOpen(false)}
-              className="block px-4 py-3 text-brand-accent font-bold hover:bg-gray-50 rounded-xl"
-            >
-              {actionLink.text}
-            </Link>
-          )}
+          <Link
+            to={actionLink.path}
+            onClick={() => setIsOpen(false)}
+            className="block px-4 py-3 text-brand-accent font-bold hover:bg-gray-50 rounded-xl"
+          >
+            {actionLink.text}
+          </Link>
           <div className="border-t border-gray-200 pt-4 mt-2">
             {loading ? (
               <div className="flex justify-center py-2">
@@ -160,9 +165,9 @@ const Navbar = () => {
                 </Link>
                 <button
                   onClick={handleLogout}
-                  className="text-red-500 w-full text-left font-bold px-4 py-3 flex items-center gap-3 hover:bg-red-50 rounded-xl transition-colors"
+                  className="text-red-500 w-full text-left font-bold px-4 py-3 flex items-center gap-3 hover:bg-red-50 rounded-xl transition-colors min-h-[44px]"
                 >
-                  <LogOut size={18} /> Sign Out
+                  <LogOut size={18} /> Logout
                 </button>
               </div>
             ) : (

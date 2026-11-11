@@ -4,7 +4,6 @@ import { User, Mail, Lock, Loader2, Eye, EyeOff } from "lucide-react";
 import toast from "react-hot-toast";
 import { signUp } from "../services/authService";
 import GoogleSignInButton from "../components/GoogleSignInButton";
-import { supabase } from "../supabaseClient";
 
 const Register = () => {
   const navigate = useNavigate();
@@ -28,22 +27,20 @@ const Register = () => {
     }
     setLoading(true);
     try {
-      await signUp(formData.email, formData.password, {
-        fullName: formData.fullName,
+      const data = await signUp(formData.email, formData.password, {
+        full_name: formData.fullName,
       });
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        await supabase.from("users").upsert({
-          id: user.id,
-          email: formData.email,
-          full_name: formData.fullName,
-          role: "designer",
-        });
+      if (data?.user && !data?.session) {
+        toast.success(
+          "Success! Please check your email to verify your account before logging in.",
+          { duration: 6000 }
+        );
+        navigate("/login");
+      } else {
+        toast.success("Account created successfully!");
+        navigate("/onboarding");
       }
-
-      toast.success("Account created successfully!");
-      navigate("/onboarding");
     } catch (error) {
       toast.error(error.message || "Registration failed.");
     } finally {
