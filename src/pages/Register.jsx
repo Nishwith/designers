@@ -4,6 +4,7 @@ import { User, Mail, Lock, Loader2, Eye, EyeOff } from "lucide-react";
 import toast from "react-hot-toast";
 import { signUp } from "../services/authService";
 import GoogleSignInButton from "../components/GoogleSignInButton";
+import SEO from "../components/SEO";
 
 const Register = () => {
   const navigate = useNavigate();
@@ -50,6 +51,12 @@ const Register = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 -mt-16 md:-mt-20 pt-16 md:pt-20">
+      <SEO
+        canonical="https://designers.vishwakarmans.com"
+        description="Join Vishwakarmans to showcase your interior and commercial design portfolio. Connect with high-value clients, grow your firm, and manage your business."
+        keywords="join Vishwakarmans, interior designer jobs, list design business, interior design lead generation, Vishwakarmans partner"
+        title="Become a Designer | Vishwakarmans Partner Network"
+      />
       <div className="flex-1 flex items-center justify-center p-4 sm:p-6 overflow-hidden h-[calc(100vh-4rem)] md:h-[calc(100vh-5rem)]">
         {/* White form card with inner scroll fallback */}
         <div className="w-full max-w-md bg-white rounded-2xl sm:rounded-3xl shadow-xl border border-gray-100 p-6 sm:p-8 space-y-3 sm:space-y-4 max-h-full overflow-y-auto animate-slide-up">
