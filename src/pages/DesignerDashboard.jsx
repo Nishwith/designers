@@ -49,6 +49,7 @@ import {
 import toast from "react-hot-toast";
 import { compressImage, ALLOWED_IMAGE_MIME_TYPES } from "../utils/imageCompression";
 import { uploadPortfolioFile } from "../services/projectService";
+import { uploadToR2, deleteFromR2, resolveMediaUrl } from "../utils/r2Storage";
 import { useQueryClient } from "@tanstack/react-query";
 import { signOut, updateUserProfile } from "../services/authService";
 import {
@@ -298,8 +299,8 @@ const AddProjectModal = ({ onClose, onAdd, designerId }) => {
           const safeExt = compressedFile.type === 'image/webp' ? 'webp' : (compressedFile.name.split('.').pop() || 'jpg');
           const storagePath = `${resolvedDesignerId}/${projData.id}/${slugCategory}_${Date.now()}_${i}.${safeExt}`;
 
-          const publicUrl = await uploadPortfolioFile(storagePath, compressedFile);
-          uploadedStoragePaths.push(storagePath);
+          const publicUrl = await uploadToR2(compressedFile, "portfolios");
+          uploadedStoragePaths.push(publicUrl);
 
           uploadedImages.push({
             project_id: projData.id,
@@ -322,7 +323,7 @@ const AddProjectModal = ({ onClose, onAdd, designerId }) => {
       // Atomic rollback: clean up uploaded storage objects and orphaned project row
       if (uploadedStoragePaths.length > 0) {
         try {
-          await supabase.storage.from("portfolio").remove(uploadedStoragePaths);
+          await deleteFromR2(uploadedStoragePaths);
         } catch (cleanupStorageError) {
           console.error("Failed to clean up storage files after upload error:", cleanupStorageError);
         }
@@ -743,8 +744,8 @@ const EditProjectModal = ({ project, designerId, onClose, onUpdate }) => {
           const safeExt = compressedFile.type === 'image/webp' ? 'webp' : (compressedFile.name.split('.').pop() || 'jpg');
           const storagePath = `${resolvedDesignerId}/${project.id}/${slugCategory}_${Date.now()}_${i}.${safeExt}`;
           
-          const publicUrl = await uploadPortfolioFile(storagePath, compressedFile);
-          uploadedStoragePaths.push(storagePath);
+          const publicUrl = await uploadToR2(compressedFile, "portfolios");
+          uploadedStoragePaths.push(publicUrl);
 
           newImageRecords.push({ 
             project_id: project.id, 
@@ -774,7 +775,7 @@ const EditProjectModal = ({ project, designerId, onClose, onUpdate }) => {
     } catch (error) {
       if (uploadedStoragePaths.length > 0) {
         try {
-          await supabase.storage.from("portfolio").remove(uploadedStoragePaths);
+          await deleteFromR2(uploadedStoragePaths);
         } catch (cleanupStorageError) {
           console.error("Failed to clean up storage files after edit error:", cleanupStorageError);
         }
@@ -889,7 +890,7 @@ const EditProjectModal = ({ project, designerId, onClose, onUpdate }) => {
                         <div className="grid grid-cols-4 sm:grid-cols-5 gap-3">
                           {existingImgsForCat.map(img => (
                             <div key={img.id} className="relative aspect-square bg-gray-200 rounded-lg overflow-hidden border border-gray-200 shadow-sm">
-                              <img src={img.image_url} alt="existing" className="w-full h-full object-cover" />
+                              {img?.image_url && <img src={resolveMediaUrl(img.image_url)} alt="existing" className="w-full h-full object-cover" />}
                               <button type="button" onClick={() => markExistingImageForDeletion(img)} className="absolute top-1 right-1 bg-red-500/80 hover:bg-red-600 text-white p-1 rounded-full backdrop-blur-sm">
                                 <Trash2 size={10} />
                               </button>
@@ -1115,8 +1116,8 @@ const ProjectCard = ({ proj, onDelete, onEdit }) => {
   return (
     <div className="group bg-white rounded-2xl overflow-hidden border border-gray-200 shadow-sm relative flex flex-col hover:border-gray-300 hover:shadow-xl transition-all">
       <div className="aspect-video relative bg-gray-100 overflow-hidden">
-        {images.length > 0 ? (
-          <img src={images[currentImgIndex]?.image_url} className="w-full h-full object-cover" />
+        {images.length > 0 && images[currentImgIndex]?.image_url ? (
+          <img src={resolveMediaUrl(images[currentImgIndex]?.image_url)} alt="Project cover" className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-gray-400">
             <ImageIcon size={40} />
@@ -1224,46 +1225,31 @@ const DesignerDashboard = ({ profileOnly = false }) => {
   // Subscription state affects publication eligibility, not dashboard access.
   const showWarningBanner = (designer?.is_subscription_active !== false) && Boolean(designer?.subscription_end) && (daysLeft >= 0 && daysLeft <= 7);
 
+  // Decoupled non-blocking geolocation probe
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) return;
+    try {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setBrowserGpsCoords({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+          });
+        },
+        () => {},
+        { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+      );
+    } catch {
+      // Non-blocking
+    }
+  }, []);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return navigate("/login");
         setUser(session.user);
-
-        // Check if designer location is already set in users table
-        const { data: userRec } = await supabase
-          .from("users")
-          .select("location")
-          .eq("id", session.user.id)
-          .maybeSingle();
-        if (userRec?.location) {
-          setHasLocation(true);
-          const match = typeof userRec.location === "string" && userRec.location.match(/POINT\(([-0-9.]+)\s+([-0-9.]+)\)/i);
-          if (match) {
-            setProfileLocationCoords({ lat: parseFloat(match[2]), lng: parseFloat(match[1]) });
-          }
-        } else if (designerData?.service_area_lat && designerData?.service_area_lng) {
-          setHasLocation(true);
-          setProfileLocationCoords({
-            lat: parseFloat(designerData.service_area_lat),
-            lng: parseFloat(designerData.service_area_lng),
-          });
-        }
-
-        // Silently probe browser GPS to detect location drift without intrusive popups
-        if (typeof navigator !== "undefined" && navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            (pos) => {
-              setBrowserGpsCoords({
-                lat: pos.coords.latitude,
-                lng: pos.coords.longitude,
-              });
-            },
-            () => {},
-            { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
-          );
-        }
         
         let designerData;
         if (adminDesignerId) {
@@ -1289,8 +1275,52 @@ const DesignerDashboard = ({ profileOnly = false }) => {
           return setLoading(false);
         }
 
+        // Fallback email and phone from session / users table if null or missing
+        let effectiveEmail = designerData.email || session?.user?.email || "";
+        let effectivePhone = designerData.phone || "";
+        if (!effectivePhone && session?.user?.id) {
+          const { data: userRec } = await supabase
+            .from("users")
+            .select("phone")
+            .eq("id", session.user.id)
+            .maybeSingle();
+          if (userRec?.phone) {
+            effectivePhone = userRec.phone;
+          }
+        }
+        designerData = {
+          ...designerData,
+          email: effectiveEmail,
+          phone: effectivePhone,
+        };
+
         setDesigner(designerData);
         setIsProfileIncomplete(!isProfessionalProfileComplete(designerData));
+
+        // Check if designer location is already set in users table or designerData
+        try {
+          const { data: userRec } = await supabase
+            .from("users")
+            .select("location")
+            .eq("id", session.user.id)
+            .maybeSingle();
+          if (userRec?.location) {
+            setHasLocation(true);
+            const match = typeof userRec.location === "string" && userRec.location.match(/POINT\(([-0-9.]+)\s+([-0-9.]+)\)/i);
+            if (match) {
+              setProfileLocationCoords({ lat: parseFloat(match[2]), lng: parseFloat(match[1]) });
+            }
+          } else if (designerData?.service_area_lat && designerData?.service_area_lng) {
+            setHasLocation(true);
+            setProfileLocationCoords({
+              lat: parseFloat(designerData.service_area_lat),
+              lng: parseFloat(designerData.service_area_lng),
+            });
+          }
+        } catch {
+          // Non-blocking location coordinate check
+        }
+
         const initialSnapshot = {
           name: designerData.name || "",
           city: designerData.city || "",
@@ -1303,8 +1333,8 @@ const DesignerDashboard = ({ profileOnly = false }) => {
           designer_type: designerData.designer_type || "interior",
           style_tags: designerData.style_tags || [],
           logo_url: designerData.logo_url || "",
-          phone: designerData.phone || "",
-          email: designerData.email || "",
+          phone: effectivePhone,
+          email: effectiveEmail,
           is_public: designerData.is_public !== false,
           videos_approved: designerData.videos_approved,
           video_status: designerData.video_status,
@@ -1317,7 +1347,7 @@ const DesignerDashboard = ({ profileOnly = false }) => {
           video_link_1: designerData.video_link_1 || designerData.video_link || "",
           video_link_2: designerData.video_link_2 || "",
           designer_type: designerData.designer_type || "interior", style_tags: designerData.style_tags || [],
-          logo_url: designerData.logo_url || "", phone: designerData.phone || "", email: designerData.email || "",
+          logo_url: designerData.logo_url || "", phone: effectivePhone, email: effectiveEmail,
           is_public: designerData.is_public !== false
         });
 
@@ -1613,11 +1643,14 @@ const DesignerDashboard = ({ profileOnly = false }) => {
 
     setUploading(true);
     try {
+      const { data: authData } = await supabase.auth.getUser();
+      const currentUser = authData?.user || user;
+      const finalEmail = (profileForm.email || designer?.email || currentUser?.email || "").trim();
+      const finalPhone = (profileForm.phone || designer?.phone || currentUser?.user_metadata?.phone || "").trim();
+
       let finalUrl = profileForm.logo_url;
       if (logoFile) {
-        const fileExt = logoFile.name.split('.').pop() || 'png';
-        const fileName = `logos/${designer.id}_${Date.now()}.${fileExt}`;
-        finalUrl = await uploadPortfolioFile(fileName, logoFile);
+        finalUrl = await uploadToR2(logoFile, "logos");
       }
       // Strip all protected/admin columns (id, user_id, is_verified, is_public,
       // priority_score, featured_status, subscription_end, rating_avg)
@@ -1631,8 +1664,8 @@ const DesignerDashboard = ({ profileOnly = false }) => {
         video_link_1: (profileForm.video_link_1 || profileForm.video_link || "").trim() || null,
         video_link_2: (profileForm.video_link_2 || "").trim() || null,
         designer_type: profileForm.designer_type,
-        phone: profileForm.phone,
-        email: profileForm.email,
+        phone: finalPhone,
+        email: finalEmail,
         style_tags: profileForm.style_tags,
         logo_url: finalUrl,
       };
@@ -1665,8 +1698,18 @@ const DesignerDashboard = ({ profileOnly = false }) => {
       setInitialProfileData((prev) => ({ ...(prev || {}), ...cleanPayload }));
       setIsProfileIncomplete(!isProfessionalProfileComplete(updatedDesigner));
       if (profileOnly) {
+        if (targetUserId) {
+          try {
+            await updateUserProfile(targetUserId, {
+              profile_completed: true,
+            });
+          } catch (profileErr) {
+            console.warn("Could not mark user profile_completed:", profileErr);
+          }
+        }
         queryClient.setQueryData(["users", user.id], (currentProfile) => ({
           ...(currentProfile || {}),
+          profile_completed: true,
           role: currentProfile?.role || "designer",
           designer: updatedDesigner,
         }));
@@ -1785,6 +1828,17 @@ const DesignerDashboard = ({ profileOnly = false }) => {
       await updateUserProfile(userId, { location: `POINT(${longitude} ${latitude})` });
       setHasLocation(true);
       setProfileLocationCoords({ lat: latitude, lng: longitude });
+      setDesigner((prev) => ({
+        ...prev,
+        service_area_lat: latitude,
+        service_area_lng: longitude,
+      }));
+      if (designer?.id) {
+        await supabase
+          .from("designers")
+          .update({ service_area_lat: latitude, service_area_lng: longitude })
+          .eq("id", designer.id);
+      }
       setLocationDriftAlert(null);
       toast.success("Service area location updated successfully!");
     } catch (err) {
@@ -1835,17 +1889,17 @@ const DesignerDashboard = ({ profileOnly = false }) => {
       },
       (geoError) => {
         setUpdatingLocation(false);
-        if (geoError.code === geoError.PERMISSION_DENIED) {
+        if (geoError?.code === 1 || geoError?.code === geoError?.PERMISSION_DENIED) {
           toast.error("Location permission denied. Please allow location access in your browser settings.");
-        } else if (geoError.code === geoError.POSITION_UNAVAILABLE) {
+        } else if (geoError?.code === 2 || geoError?.code === geoError?.POSITION_UNAVAILABLE) {
           toast.error("Location information is unavailable. Please try again.");
-        } else if (geoError.code === geoError.TIMEOUT) {
+        } else if (geoError?.code === 3 || geoError?.code === geoError?.TIMEOUT) {
           toast.error("Location request timed out. Please try again.");
         } else {
-          toast.error("Could not capture location: " + (geoError.message || "Unknown error"));
+          toast.error("Could not capture location: " + (geoError?.message || "Unknown error"));
         }
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      { timeout: 10000, enableHighAccuracy: true, maximumAge: 30000 }
     );
   };
 
@@ -1853,7 +1907,15 @@ const DesignerDashboard = ({ profileOnly = false }) => {
     <form onSubmit={handleUpdateProfile} className="bg-white border border-gray-200 rounded-3xl p-6 md:p-8 space-y-6 shadow-2xl">
       <div className="flex flex-col items-center gap-4 border-b border-gray-200 pb-6">
         <div className="w-24 h-24 rounded-full bg-gray-50 border-2 border-gray-300 overflow-hidden relative">
-          {logoFile ? <img src={URL.createObjectURL(logoFile)} className="w-full h-full object-cover" /> : <img src={designer?.logo_url} className="w-full h-full object-cover" />}
+          {logoFile ? (
+            <img src={URL.createObjectURL(logoFile)} alt="Logo Preview" className="w-full h-full object-cover" />
+          ) : designer?.logo_url ? (
+            <img src={resolveMediaUrl(designer.logo_url)} alt="Logo" className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-gray-400 font-bold text-2xl uppercase">
+              {designer?.name?.[0] || <ImageIcon size={28} className="text-gray-400" />}
+            </div>
+          )}
         </div>
         <div>
           <input
@@ -2032,9 +2094,33 @@ const DesignerDashboard = ({ profileOnly = false }) => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50/50 p-4 rounded-xl border border-gray-200/50">
-        <div className="opacity-70"><label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1"><Mail size={10} /> Email <Lock size={10} /></label><p className="text-gray-900 font-mono text-sm truncate">{profileForm.email}</p></div>
-        <div className="opacity-70"><label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1"><Phone size={10} /> Phone <Lock size={10} /></label><p className="text-gray-900 font-mono text-sm">{profileForm.phone}</p></div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50/50 p-4 rounded-xl border border-gray-200/50 items-center">
+        <div>
+          <label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1 mb-1">
+            <Mail size={10} /> Email <Lock size={10} />
+          </label>
+          <input
+            type="email"
+            readOnly
+            disabled
+            className="w-full bg-gray-100 cursor-not-allowed border border-gray-200 rounded-lg px-3 py-1.5 text-gray-500 font-mono text-sm focus:outline-none"
+            value={profileForm.email || ""}
+            placeholder="Email not set"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1 mb-1">
+            <Phone size={10} /> Phone <Lock size={10} />
+          </label>
+          <input
+            type="tel"
+            readOnly
+            disabled
+            className="w-full bg-gray-100 cursor-not-allowed border border-gray-200 rounded-lg px-3 py-1.5 text-gray-500 font-mono text-sm focus:outline-none"
+            placeholder="Phone not set"
+            value={profileForm.phone || ""}
+          />
+        </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div><label className="text-xs font-bold text-gray-500 uppercase">Brand Name</label><input type="text" className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-gray-900 mt-1" value={profileForm.name} onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })} /></div>
@@ -2189,7 +2275,7 @@ const DesignerDashboard = ({ profileOnly = false }) => {
           </div>
           <div className="flex flex-col items-center mb-10 text-center">
             <div className="w-24 h-24 bg-gray-100 rounded-full mb-4 border-2 border-gray-200 overflow-hidden shadow-sm">
-              {designer?.logo_url ? <img src={designer.logo_url} className="w-full h-full object-cover" /> : <div className="h-full flex items-center justify-center font-bold text-3xl text-gray-400">{designer?.name?.[0]}</div>}
+              {designer?.logo_url ? <img src={resolveMediaUrl(designer.logo_url)} className="w-full h-full object-cover" /> : <div className="h-full flex items-center justify-center font-bold text-3xl text-gray-400">{designer?.name?.[0]}</div>}
             </div>
             <h2 className="text-gray-900 font-bold text-lg truncate w-full">{designer?.name}</h2>
             <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 text-[10px] font-bold tracking-widest uppercase px-2 py-1 rounded mt-2">Verified Partner</span>

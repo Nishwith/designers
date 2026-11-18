@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
+import { resolveMediaUrl } from "../utils/r2Storage";
 import {
   MessageSquare,
   Clock,
@@ -98,7 +99,7 @@ const Connect = () => {
                       >
                         {conn.designers.logo_url ? (
                           <img
-                            src={conn.designers.logo_url}
+                            src={resolveMediaUrl(conn.designers.logo_url)}
                             className="w-full h-full object-cover"
                             alt="logo"
                           />

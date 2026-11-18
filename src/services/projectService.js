@@ -1,5 +1,8 @@
 import { supabase } from './supabaseClient';
 import { submitOrReopenInquiry, archiveInquiry } from './designerInquiryService';
+import { uploadToR2, deleteFromR2, resolveMediaUrl } from '../utils/r2Storage';
+
+export { uploadToR2, deleteFromR2, resolveMediaUrl };
 
 // ── Designers ────────────────────────────────────────────────────────────
 
@@ -67,31 +70,11 @@ export const insertProjectImages = async (rows) => {
 
 // ── Storage ──────────────────────────────────────────────────────────────
 
-/** Upload a file to the portfolio bucket with client-side size and MIME validation. Returns the public URL. */
+/** Upload a file to Cloudflare R2 storage with client-side size and MIME validation. Returns the public URL. */
 export const uploadPortfolioFile = async (path, file) => {
-  if (!file) {
-    throw new Error('No file provided for upload.');
-  }
-
-  const MAX_PORTFOLIO_SIZE_BYTES = 10485760; // 10MB
-  if (file.size > MAX_PORTFOLIO_SIZE_BYTES) {
-    throw new Error(`File "${file.name || 'selected file'}" exceeds the 10MB limit.`);
-  }
-
-  const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
-  if (!ALLOWED_MIME_TYPES.includes(file.type)) {
-    throw new Error(
-      `File "${file.name || 'selected file'}" has unsupported MIME type "${file.type}". Allowed types: JPEG, PNG, WebP, AVIF.`
-    );
-  }
-
-  const { error } = await supabase.storage.from('portfolio').upload(path, file, {
-    contentType: file.type,
-    cacheControl: '3600',
-    upsert: false,
-  });
-  if (error) throw error;
-  return supabase.storage.from('portfolio').getPublicUrl(path).data.publicUrl;
+  const actualFile = (file instanceof Blob || (file && file.size !== undefined)) ? file : path;
+  const folder = (typeof path === 'string' && path.includes('logo')) ? 'logos' : 'portfolios';
+  return uploadToR2(actualFile, folder);
 };
 
 // ── Connections ──────────────────────────────────────────────────────────

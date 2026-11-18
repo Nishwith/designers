@@ -5,9 +5,11 @@ import {
   MAX_IMAGE_SIZE_BYTES,
 } from '../utils/imageCompression';
 import { uploadPortfolioFile } from '../services/projectService';
+import { uploadToR2, deleteFromR2, resolveMediaUrl } from '../utils/r2Storage';
 import { supabase } from '../services/supabaseClient';
 
 vi.mock('../services/supabaseClient', () => {
+  const invokeMock = vi.fn();
   const uploadMock = vi.fn();
   const getPublicUrlMock = vi.fn(() => ({
     data: { publicUrl: 'https://example.supabase.co/storage/v1/object/public/portfolio/test.webp' },
@@ -15,6 +17,9 @@ vi.mock('../services/supabaseClient', () => {
 
   return {
     supabase: {
+      functions: {
+        invoke: invokeMock,
+      },
       storage: {
         from: vi.fn(() => ({
           upload: uploadMock,
@@ -69,22 +74,41 @@ describe('Phase 2: Image Compression & Storage Service Refactoring', () => {
       );
     });
 
-    it('uploads valid file with explicit contentType and returns public URL', async () => {
+    it('uploads valid file to R2 via presigned URL and returns public URL', async () => {
       const validFile = new File(['valid webp'], 'room.webp', { type: 'image/webp' });
-      const mockStorage = supabase.storage.from('portfolio');
-      mockStorage.upload.mockResolvedValueOnce({ data: { path: 'designer-1/room.webp' }, error: null });
+      const mockPublicUrl = 'https://pub-r2.vishwakarmans.com/portfolios/designer-1/room.webp';
+      
+      supabase.functions.invoke.mockResolvedValueOnce({
+        data: {
+          uploadUrl: 'https://r2-upload.cloudflarestorage.com/presigned-put',
+          publicUrl: mockPublicUrl,
+        },
+        error: null,
+      });
+
+      const fetchMock = vi.fn(() => Promise.resolve({ ok: true, status: 200 }));
+      vi.stubGlobal('fetch', fetchMock);
 
       const url = await uploadPortfolioFile('designer-1/room.webp', validFile);
 
-      expect(mockStorage.upload).toHaveBeenCalledWith(
-        'designer-1/room.webp',
-        validFile,
+      expect(supabase.functions.invoke).toHaveBeenCalledWith(
+        'get-r2-upload-url',
         expect.objectContaining({
-          contentType: 'image/webp',
-          upsert: false,
+          body: expect.objectContaining({
+            contentType: 'image/webp',
+          }),
         })
       );
-      expect(url).toBe('https://example.supabase.co/storage/v1/object/public/portfolio/test.webp');
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://r2-upload.cloudflarestorage.com/presigned-put',
+        expect.objectContaining({
+          method: 'PUT',
+          headers: { 'Content-Type': 'image/webp' },
+          body: validFile,
+        })
+      );
+      expect(url).toBe(mockPublicUrl);
+      vi.unstubAllGlobals();
     });
   });
 
@@ -94,6 +118,35 @@ describe('Phase 2: Image Compression & Storage Service Refactoring', () => {
       const slugCategory = category.toLowerCase().replace(/[^a-z0-9]/g, '_');
       expect(slugCategory).toBe('living_room___dining_area');
       expect(slugCategory).not.toContain(' ');
+    });
+  });
+
+  describe('r2Storage utility functions', () => {
+    it('resolveMediaUrl returns absolute URLs as-is', () => {
+      expect(resolveMediaUrl('https://pub-r2.vishwakarmans.com/test.webp')).toBe(
+        'https://pub-r2.vishwakarmans.com/test.webp'
+      );
+      expect(resolveMediaUrl('http://example.com/logo.png')).toBe('http://example.com/logo.png');
+    });
+
+    it('resolveMediaUrl falls back cleanly for relative legacy paths and handles empty values', () => {
+      expect(resolveMediaUrl('')).toBe('');
+      expect(resolveMediaUrl(null)).toBe('');
+      const resolved = resolveMediaUrl('designer-1/room.webp');
+      expect(resolved).toBeTruthy();
+      expect(resolved).toContain('designer-1/room.webp');
+    });
+
+    it('deleteFromR2 invokes delete-r2-file with publicUrl or key', async () => {
+      supabase.functions.invoke.mockResolvedValueOnce({
+        data: { success: true },
+        error: null,
+      });
+
+      await deleteFromR2('https://pub-r2.vishwakarmans.com/portfolios/u-1/test.webp');
+      expect(supabase.functions.invoke).toHaveBeenCalledWith('delete-r2-file', {
+        body: { publicUrl: 'https://pub-r2.vishwakarmans.com/portfolios/u-1/test.webp' },
+      });
     });
   });
 });

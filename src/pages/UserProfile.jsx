@@ -155,17 +155,17 @@ const UserProfile = () => {
       },
       (geoError) => {
         setUpdatingLocation(false);
-        if (geoError.code === geoError.PERMISSION_DENIED) {
+        if (geoError?.code === 1 || geoError?.code === geoError?.PERMISSION_DENIED) {
           toast.error("Location permission denied. Please allow location access in your browser settings.");
-        } else if (geoError.code === geoError.POSITION_UNAVAILABLE) {
+        } else if (geoError?.code === 2 || geoError?.code === geoError?.POSITION_UNAVAILABLE) {
           toast.error("Location information is unavailable. Please try again.");
-        } else if (geoError.code === geoError.TIMEOUT) {
+        } else if (geoError?.code === 3 || geoError?.code === geoError?.TIMEOUT) {
           toast.error("Location request timed out. Please try again.");
         } else {
-          toast.error("Could not capture location: " + (geoError.message || "Unknown error"));
+          toast.error("Could not capture location: " + (geoError?.message || "Unknown error"));
         }
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      { timeout: 10000, enableHighAccuracy: true, maximumAge: 30000 }
     );
   };
 

@@ -116,15 +116,20 @@ const UnifiedOnboarding = () => {
 
     setSubmitting(true);
     try {
+      const { data: authData } = await supabase.auth.getUser();
+      const currentUser = authData?.user || user;
+      const userEmail = currentUser?.email || user?.email;
+      const userId = currentUser?.id || user?.id;
+
       if (!formData.orgName)
         throw new Error("Please fill in the Organization Name.");
 
       const { error } = await supabase.from("designer_applications").insert({
-        user_id: user.id,
+        user_id: userId,
         org_name: formData.orgName,
         city: finalCity,
         phone: formData.phone,
-        email: user.email,
+        email: userEmail,
         designer_type: formData.designerType,
         status: "pending",
       });
@@ -141,12 +146,28 @@ const UnifiedOnboarding = () => {
         console.error("Warning: designer_create_sandbox_profile:", sandboxError);
       }
 
-      if (user?.id) {
-        await updateUserProfile(user.id, {
+      if (userId) {
+        // Update designers table with email and phone
+        const { error: designerUpdateError } = await supabase
+          .from("designers")
+          .update({
+            email: userEmail,
+            phone: formData.phone,
+            name: formData.orgName,
+            city: finalCity,
+            designer_type: formData.designerType,
+          })
+          .eq("user_id", userId);
+
+        if (designerUpdateError) {
+          console.error("Warning updating designers table with email/phone:", designerUpdateError);
+        }
+
+        await updateUserProfile(userId, {
           phone: formData.phone,
           city: finalCity,
           full_name: formData.orgName,
-          profile_completed: true,
+          profile_completed: false,
         });
       }
 
