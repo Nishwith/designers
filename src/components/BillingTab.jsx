@@ -6,7 +6,8 @@ import { supabase } from "../supabaseClient";
 const BillingTab = ({ designer, onRequestRenewal, onRequestFeature, onCheckout, paymentHistory: initialPaymentHistory = [] }) => {
   const [paymentHistory, setPaymentHistory] = useState(initialPaymentHistory);
 
-  const profileLink = `https://vishwakarmans.netlify.app/designer/${designer?.id}`;
+  const mainAppUrl = (import.meta.env.VITE_MAIN_APP_URL || "https://vishwakarmans.com").replace(/\/+$/, "");
+  const profileLink = `${mainAppUrl}/designer/${designer?.id}`;
   const designerName = designer?.name || 'my studio';
 
   const handleShare = async () => {

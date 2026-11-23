@@ -50,14 +50,15 @@ describe("ProfileRoute", () => {
     expect(await screen.findByText("Full professional profile form")).toBeInTheDocument();
   });
 
-  it("routes a completed but unverified profile to the dashboard", async () => {
+  it("allows a completed but unverified designer to open their profile settings without premature redirection", async () => {
     authState.profile = {
       role: "designer",
       designer: { id: 42, is_verified: false, projects_completed: 1, about_text: "Studio" },
       application: { id: 21, status: "approved" },
     };
     renderProfileRoute();
-    expect(await screen.findByText("Operational designer dashboard")).toBeInTheDocument();
+    expect(await screen.findByText("User profile settings")).toBeInTheDocument();
+    expect(screen.queryByText("Operational designer dashboard")).not.toBeInTheDocument();
   });
 
   it("keeps pending applicants on their account settings page", async () => {
@@ -86,20 +87,9 @@ describe("ProfileRoute", () => {
     expect(await screen.findByText("Collaboration application")).toBeInTheDocument();
   });
 
-  it("does not force the confirmed completed account through onboarding again", async () => {
+  it("renders UserProfile for an authenticated approved designer session without prematurely redirecting or throwing", async () => {
     authState.user = { id: "72b57fa4-46e4-47ac-9b4f-e25a28b778e3" };
     authState.profile = {
-      role: "designer",
-      designer: {
-        id: 29,
-        user_id: "72b57fa4-46e4-47ac-9b4f-e25a28b778e3",
-        is_verified: true,
-        projects_completed: null,
-        about_text: "",
-      },
-      application: { id: 21, user_id: "72b57fa4-46e4-47ac-9b4f-e25a28b778e3", status: "approved" },
-    };
-    const freshProfile = {
       role: "designer",
       designer: {
         id: 29,
@@ -110,15 +100,11 @@ describe("ProfileRoute", () => {
       },
       application: { id: 21, user_id: "72b57fa4-46e4-47ac-9b4f-e25a28b778e3", status: "approved" },
     };
-    authState.refetch.mockImplementationOnce(async () => {
-      authState.profile = freshProfile;
-      return { data: freshProfile };
-    });
 
     renderProfileRoute();
 
-    expect(await screen.findByText("Operational designer dashboard")).toBeInTheDocument();
-    expect(authState.refetch).toHaveBeenCalled();
-    expect(authState.profile.designer).toMatchObject({ projects_completed: 1, about_text: "hj" });
+    expect(await screen.findByText("User profile settings")).toBeInTheDocument();
+    expect(screen.queryByText("Collaboration application")).not.toBeInTheDocument();
+    expect(screen.queryByText("Operational designer dashboard")).not.toBeInTheDocument();
   });
 });

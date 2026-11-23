@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Navigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useCurrentUser, useUserProfile } from "../hooks/useAuth";
@@ -11,21 +11,9 @@ const ProfileRoute = () => {
     data: profile,
     isLoading: profileLoading,
     isError: profileError,
-    refetch: refetchProfile,
   } = useUserProfile(user?.id);
-  const [refreshedUserId, setRefreshedUserId] = useState(null);
 
-  useEffect(() => {
-    let mounted = true;
-    if (user?.id) {
-      refetchProfile().finally(() => {
-        if (mounted) setRefreshedUserId(user.id);
-      });
-    }
-    return () => { mounted = false; };
-  }, [user?.id, refetchProfile]);
-
-  if (userLoading || (user && (profileLoading || refreshedUserId !== user.id))) {
+  if (userLoading || (user && profileLoading)) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <Loader2 className="animate-spin text-brand-accent" size={40} />
@@ -48,8 +36,6 @@ const ProfileRoute = () => {
   const accountState = getDesignerAccountState(user, profile);
   if (accountState === "onboarding") return <Navigate to="/onboarding" replace />;
   if (accountState === "profile-incomplete") return <Navigate to="/complete-profile" replace />;
-  if (accountState === "profile-review") return <Navigate to="/dashboard" replace />;
-  if (accountState === "approved") return <Navigate to="/dashboard" replace />;
 
   return <UserProfile />;
 };

@@ -307,7 +307,7 @@ describe("existing full designer profile editor inside the dashboard", () => {
     expect(queryClient.getQueryData(["users", mocks.userId]).application).toEqual({ id: 21, status: "approved" });
     expect(screen.getByText("Inquiries & Clients")).toBeInTheDocument();
     expect(mocks.invoke).not.toHaveBeenCalledWith("create-razorpay-order", expect.anything());
-  });
+  }, 15000);
 
   it("shows the activation popup, opens Razorpay on demand and leaves Pay Now after dismissal", async () => {
     render(

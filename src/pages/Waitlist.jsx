@@ -18,6 +18,9 @@ const Waitlist = () => {
   useEffect(() => {
     let isActive = true;
     const checkStatus = async () => {
+      // Pause polling when tab is not visible
+      if (typeof document !== "undefined" && document.hidden) return;
+
       try {
         const {
           data: { user },
@@ -66,10 +69,21 @@ const Waitlist = () => {
     };
 
     checkStatus();
-    const interval = setInterval(checkStatus, 5000);
+    // ponytail: throttle polling from 5s to 60s and pause when tab is inactive
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      checkStatus();
+    }, 60000);
+    const handleVisibilityChange = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        checkStatus();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       isActive = false;
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [navigate, queryClient]);
 

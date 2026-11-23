@@ -42,7 +42,7 @@ class ErrorBoundary extends React.Component {
                 className="w-full sm:w-auto px-8 py-3.5 bg-brand-accent hover:bg-orange-600 text-white font-bold rounded-xl shadow-lg transition-all active:scale-95 inline-flex items-center justify-center gap-2 cursor-pointer"
               >
                 <RefreshCw size={16} />
-                <span>Refresh Page</span>
+                <span>Reload Page</span>
               </button>
             </div>
           </div>

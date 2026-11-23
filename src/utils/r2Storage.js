@@ -50,6 +50,7 @@ export const uploadToR2 = async (file, folder = 'portfolios') => {
       fileName,
       contentType,
       folder: targetFolder,
+      fileSize: uploadFile.size,
     },
   });
 

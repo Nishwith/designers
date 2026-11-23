@@ -61,6 +61,7 @@ import { hideOwnDesignerProfile, isDesignerSelfHideRpcEnabled, updateOwnDesigner
 import { submitDesignerAccountRequest } from "../services/designerAccountRequestService";
 import { archiveInquiry } from "../services/designerInquiryService";
 import { getYouTubeEmbedUrl } from "../utils/videoUtils";
+import { getCurrentLocation } from "../utils/geolocation";
 
 // --- HELPER TO PARSE PROJECT JSON DATA ---
 const parseProjectCategory = (catStr) => {
@@ -1175,6 +1176,26 @@ const ProjectCard = ({ proj, onDelete, onEdit }) => {
 };
 
 // --- MAIN DASHBOARD ---
+// Lazy-load Razorpay checkout script on demand to keep non-checkout routes console-clean
+const loadRazorpayScript = () => {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined") return resolve(false);
+    if (window.Razorpay) return resolve(true);
+    const existingScript = document.querySelector('script[src="https://checkout.razorpay.com/v1/checkout.js"]');
+    if (existingScript) {
+      existingScript.addEventListener("load", () => resolve(true));
+      existingScript.addEventListener("error", () => resolve(false));
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+};
+
 const DesignerDashboard = ({ profileOnly = false }) => {
   const { id: adminDesignerId } = useParams(); 
   const queryClient = useQueryClient();
@@ -1474,6 +1495,10 @@ const DesignerDashboard = ({ profileOnly = false }) => {
         },
       };
 
+      if (!window.Razorpay) {
+        await loadRazorpayScript();
+      }
+
       if (window.Razorpay) {
         const rzp = new window.Razorpay(options);
         rzp.open();
@@ -1500,6 +1525,9 @@ const DesignerDashboard = ({ profileOnly = false }) => {
 
     let isMounted = true;
     const refreshPaymentEligibility = async () => {
+      // Pause background polling when tab/document is hidden
+      if (typeof document !== "undefined" && document.hidden) return;
+
       const { data, error } = await supabase
         .from("designers")
         .select("id, is_verified, is_subscription_active, subscription_end, is_public")
@@ -1521,6 +1549,7 @@ const DesignerDashboard = ({ profileOnly = false }) => {
         return { ...profile, designer: { ...profile.designer, ...data } };
       });
 
+      let changed = false;
       setDesigner((current) => {
         if (!current || current.id !== data.id) return current;
         if (
@@ -1531,26 +1560,39 @@ const DesignerDashboard = ({ profileOnly = false }) => {
         ) {
           return current;
         }
+        changed = true;
         return { ...current, ...data };
       });
 
       // Refresh the complete joined profile after publishing the updated
-      // subset above. This also reconciles any other profile fields changed
-      // during the same admin action without blocking the visible dashboard.
-      void queryClient.invalidateQueries({
-        queryKey: ["users", designer.user_id],
-        exact: true,
-      }).catch((refreshError) => {
-        console.error("Unable to refresh designer account state:", refreshError);
-      });
+      // subset above ONLY when the verification or subscription state changed.
+      if (changed) {
+        void queryClient.invalidateQueries({
+          queryKey: ["users", designer.user_id],
+          exact: true,
+        }).catch((refreshError) => {
+          console.error("Unable to refresh designer account state:", refreshError);
+        });
+      }
     };
 
-    const intervalId = window.setInterval(refreshPaymentEligibility, 5000);
+    // ponytail: throttle polling from 5s to 60s and pause when tab is inactive
+    const intervalId = window.setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      refreshPaymentEligibility();
+    }, 60000);
+    const handleVisibilityChange = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        refreshPaymentEligibility();
+      }
+    };
     window.addEventListener("focus", refreshPaymentEligibility);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       isMounted = false;
       window.clearInterval(intervalId);
       window.removeEventListener("focus", refreshPaymentEligibility);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [designer?.id, designer?.user_id, adminDesignerId, queryClient]);
 
@@ -1643,14 +1685,22 @@ const DesignerDashboard = ({ profileOnly = false }) => {
 
     setUploading(true);
     try {
-      const { data: authData } = await supabase.auth.getUser();
-      const currentUser = authData?.user || user;
+      let authUser = null;
+      if (typeof supabase?.auth?.getUser === "function") {
+        try {
+          const { data: authData } = await supabase.auth.getUser();
+          authUser = authData?.user;
+        } catch {}
+      }
+      const currentUser = authUser || user;
       const finalEmail = (profileForm.email || designer?.email || currentUser?.email || "").trim();
       const finalPhone = (profileForm.phone || designer?.phone || currentUser?.user_metadata?.phone || "").trim();
 
       let finalUrl = profileForm.logo_url;
+      let newlyUploadedLogoUrl = null;
       if (logoFile) {
         finalUrl = await uploadToR2(logoFile, "logos");
+        newlyUploadedLogoUrl = finalUrl;
       }
       // Strip all protected/admin columns (id, user_id, is_verified, is_public,
       // priority_score, featured_status, subscription_end, rating_avg)
@@ -1719,6 +1769,13 @@ const DesignerDashboard = ({ profileOnly = false }) => {
         toast.success("Profile Updated!");
       }
     } catch (err) {
+      if (newlyUploadedLogoUrl) {
+        try {
+          await deleteFromR2(newlyUploadedLogoUrl);
+        } catch (cleanupErr) {
+          console.warn("Failed to cleanup orphaned logo from R2:", cleanupErr);
+        }
+      }
       toast.error("Save failed: " + err.message);
     } finally {
       setUploading(false);
@@ -1848,12 +1905,7 @@ const DesignerDashboard = ({ profileOnly = false }) => {
     }
   };
 
-  const handleUpdateLocation = () => {
-    if (!navigator.geolocation) {
-      toast.error("Geolocation is not supported by your browser.");
-      return;
-    }
-
+  const handleUpdateLocation = async () => {
     const currentUserId = user?.id || designer?.user_id;
     if (!currentUserId) {
       toast.error("User ID not found. Please log in again.");
@@ -1861,46 +1913,49 @@ const DesignerDashboard = ({ profileOnly = false }) => {
     }
 
     setUpdatingLocation(true);
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
+    try {
+      const loc = await getCurrentLocation();
+      const { latitude, longitude, approximate } = loc;
 
-        // Check distance drift if existing coordinates are known (> 100m / 0.1km threshold)
-        if (profileLocationCoords?.lat != null && profileLocationCoords?.lng != null) {
-          const driftKm = calculateDriftKm(
-            profileLocationCoords.lat,
-            profileLocationCoords.lng,
-            latitude,
-            longitude
-          );
-          if (driftKm > 0.1) {
-            setUpdatingLocation(false);
-            setLocationDriftAlert({
-              driftKm: driftKm < 1 ? `${Math.round(driftKm * 1000)} meters` : `${driftKm.toFixed(1)} km`,
-              newLat: latitude,
-              newLng: longitude,
-              currentUserId,
-            });
-            return;
-          }
-        }
+      if (approximate) {
+        toast("Using approximate location from network. You can adjust your city manually in the form.", {
+          icon: "📍",
+        });
+      }
 
-        await executeLocationSave(currentUserId, latitude, longitude);
-      },
-      (geoError) => {
-        setUpdatingLocation(false);
-        if (geoError?.code === 1 || geoError?.code === geoError?.PERMISSION_DENIED) {
-          toast.error("Location permission denied. Please allow location access in your browser settings.");
-        } else if (geoError?.code === 2 || geoError?.code === geoError?.POSITION_UNAVAILABLE) {
-          toast.error("Location information is unavailable. Please try again.");
-        } else if (geoError?.code === 3 || geoError?.code === geoError?.TIMEOUT) {
-          toast.error("Location request timed out. Please try again.");
-        } else {
-          toast.error("Could not capture location: " + (geoError?.message || "Unknown error"));
+      // Check distance drift if existing coordinates are known (> 100m / 0.1km threshold)
+      if (profileLocationCoords?.lat != null && profileLocationCoords?.lng != null) {
+        const driftKm = calculateDriftKm(
+          profileLocationCoords.lat,
+          profileLocationCoords.lng,
+          latitude,
+          longitude
+        );
+        if (driftKm > 0.1) {
+          setUpdatingLocation(false);
+          setLocationDriftAlert({
+            driftKm: driftKm < 1 ? `${Math.round(driftKm * 1000)} meters` : `${driftKm.toFixed(1)} km`,
+            newLat: latitude,
+            newLng: longitude,
+            currentUserId,
+          });
+          return;
         }
-      },
-      { timeout: 10000, enableHighAccuracy: true, maximumAge: 30000 }
-    );
+      }
+
+      await executeLocationSave(currentUserId, latitude, longitude);
+    } catch (geoError) {
+      setUpdatingLocation(false);
+      if (geoError?.isDenied || geoError?.code === 1 || geoError?.code === geoError?.PERMISSION_DENIED) {
+        toast.error("Location permission denied. Please allow location access in your browser settings or enter your city manually.");
+      } else if (geoError?.code === 2 || geoError?.code === geoError?.POSITION_UNAVAILABLE) {
+        toast.error("Location information is unavailable. Please try again.");
+      } else if (geoError?.code === 3 || geoError?.code === geoError?.TIMEOUT) {
+        toast.error("Location request timed out. Please try again.");
+      } else {
+        toast.error("Could not capture location: " + (geoError?.message || "Unknown error"));
+      }
+    }
   };
 
   const renderProfileForm = () => (
@@ -1909,7 +1964,7 @@ const DesignerDashboard = ({ profileOnly = false }) => {
         <div className="w-24 h-24 rounded-full bg-gray-50 border-2 border-gray-300 overflow-hidden relative">
           {logoFile ? (
             <img src={URL.createObjectURL(logoFile)} alt="Logo Preview" className="w-full h-full object-cover" />
-          ) : designer?.logo_url ? (
+          ) : resolveMediaUrl(designer?.logo_url) ? (
             <img src={resolveMediaUrl(designer.logo_url)} alt="Logo" className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-gray-400 font-bold text-2xl uppercase">
@@ -2275,7 +2330,7 @@ const DesignerDashboard = ({ profileOnly = false }) => {
           </div>
           <div className="flex flex-col items-center mb-10 text-center">
             <div className="w-24 h-24 bg-gray-100 rounded-full mb-4 border-2 border-gray-200 overflow-hidden shadow-sm">
-              {designer?.logo_url ? <img src={resolveMediaUrl(designer.logo_url)} className="w-full h-full object-cover" /> : <div className="h-full flex items-center justify-center font-bold text-3xl text-gray-400">{designer?.name?.[0]}</div>}
+              {resolveMediaUrl(designer?.logo_url) ? <img src={resolveMediaUrl(designer.logo_url)} className="w-full h-full object-cover" /> : <div className="h-full flex items-center justify-center font-bold text-3xl text-gray-400">{designer?.name?.[0]}</div>}
             </div>
             <h2 className="text-gray-900 font-bold text-lg truncate w-full">{designer?.name}</h2>
             <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 text-[10px] font-bold tracking-widest uppercase px-2 py-1 rounded mt-2">Verified Partner</span>

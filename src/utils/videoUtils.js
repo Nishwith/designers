@@ -3,6 +3,8 @@ const YOUTUBE_HOSTS = new Set([
   "www.youtube.com",
   "m.youtube.com",
   "youtu.be",
+  "youtube-nocookie.com",
+  "www.youtube-nocookie.com",
 ]);
 
 /**
@@ -33,7 +35,16 @@ export const getYouTubeEmbedUrl = (value) => {
     }
 
     if (!videoId || !/^[A-Za-z0-9_-]{11}$/.test(videoId)) return null;
-    return `https://www.youtube.com/embed/${videoId}`;
+
+    const embedUrl = new URL(`https://www.youtube-nocookie.com/embed/${videoId}`);
+    embedUrl.searchParams.set("rel", "0");
+    embedUrl.searchParams.set("modestbranding", "1");
+    for (const [key, val] of url.searchParams.entries()) {
+      if (key !== "v" && key !== "rel" && key !== "modestbranding") {
+        embedUrl.searchParams.set(key, val);
+      }
+    }
+    return embedUrl.toString();
   } catch {
     return null;
   }
